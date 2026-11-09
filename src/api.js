@@ -1,13 +1,17 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+// Sanitize base URL: strip trailing slash and guarantee clean /api endpoint prefix
+const rawBaseUrl = (import.meta.env.VITE_API_URL || 'https://cricpass-backend.onrender.com/api')
+  .trim()
+  .replace(/\/+$/, '');
+const API_BASE_URL = rawBaseUrl.endsWith('/api') ? rawBaseUrl : `${rawBaseUrl}/api`;
 
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 10000,
+  timeout: 30000, // 30-second timeout to handle Render cold-start spins and email OTP delays
 });
 
 // Response interceptor for consistent error extraction
