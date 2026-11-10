@@ -130,20 +130,24 @@ export const loginTeamAdmin = async ({ team_id, password, phone_number }) => {
 };
 
 /**
- * 11. Send 6-digit Email OTP via Nodemailer
+ * 11. Send 6-digit WhatsApp OTP
  */
-export const sendEmailOTP = async (email, purpose = 'Verification') => {
-  const response = await api.post('/otp/send-email-otp', { email, purpose });
+export const sendWhatsAppOTP = async (phone, purpose = 'Verification') => {
+  const response = await api.post('/otp/send-whatsapp-otp', { phone, purpose });
   return response.data;
 };
 
 /**
- * 12. Verify 6-digit Email OTP
+ * 12. Verify 6-digit WhatsApp OTP
  */
-export const verifyEmailOTP = async (email, code) => {
-  const response = await api.post('/otp/verify-email-otp', { email, code });
+export const verifyWhatsAppOTP = async (phone, code) => {
+  const response = await api.post('/otp/verify-whatsapp-otp', { phone, code });
   return response.data;
 };
+
+// Legacy aliases for backward compatibility
+export const sendEmailOTP = sendWhatsAppOTP;
+export const verifyEmailOTP = verifyWhatsAppOTP;
 
 /**
  * 13. Change Team Admin Password (after OTP verification)

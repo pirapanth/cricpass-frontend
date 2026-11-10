@@ -22,8 +22,8 @@ import {
   searchPlayerByNIC,
   initiateTransfer,
   verifyTransferOTP,
-  sendEmailOTP,
-  verifyEmailOTP,
+  sendWhatsAppOTP,
+  verifyWhatsAppOTP,
   grantMutualClearance
 } from '../api';
 
@@ -189,12 +189,12 @@ export default function TeamTransfer() {
   };
 
   // -------------------------------------------------------------
-  // CURRENT TEAM ADMIN: Send Email OTP
+  // CURRENT TEAM ADMIN: Send WhatsApp OTP
   // -------------------------------------------------------------
   const handleSendCurrentAdminEmailOtp = async () => {
-    const adminEmail = transferResult?.current_team_admin?.admin_email;
-    if (!adminEmail) {
-      setCurrentOtpError('Current team does not have a registered administrator email');
+    const adminPhone = transferResult?.current_team_admin?.phone_number || transferResult?.current_team_admin?.admin_email;
+    if (!adminPhone) {
+      setCurrentOtpError('Current team does not have a registered administrator WhatsApp number');
       return;
     }
 
@@ -203,25 +203,25 @@ export default function TeamTransfer() {
     setCurrentOtpMessage(null);
 
     try {
-      await sendEmailOTP(
-        adminEmail,
+      await sendWhatsAppOTP(
+        adminPhone,
         `Transfer Release Approval: ${playerData?.full_name || 'Player'}`
       );
       setCurrentOtpSent(true);
-      setCurrentOtpMessage(`Verification code dispatched to ${adminEmail}`);
+      setCurrentOtpMessage(`OTP sent to your WhatsApp number (+${String(adminPhone).replace(/\D/g, '')})`);
     } catch (err) {
-      setCurrentOtpError(err.message || 'Failed to dispatch email OTP to current team admin');
+      setCurrentOtpError(err.message || 'Failed to dispatch WhatsApp OTP to current team admin');
     } finally {
       setSendingCurrentOtp(false);
     }
   };
 
   // -------------------------------------------------------------
-  // CURRENT TEAM ADMIN: Check Email OTP
+  // CURRENT TEAM ADMIN: Check WhatsApp OTP
   // -------------------------------------------------------------
   const handleCheckCurrentAdminEmailOtp = async (e) => {
     if (e) e.preventDefault();
-    const adminEmail = transferResult?.current_team_admin?.admin_email;
+    const adminPhone = transferResult?.current_team_admin?.phone_number || transferResult?.current_team_admin?.admin_email;
 
     if (!currentOtpCode.trim()) {
       setCurrentOtpError('Please enter the 6-digit verification code');
@@ -232,8 +232,8 @@ export default function TeamTransfer() {
     setCurrentOtpError(null);
 
     try {
-      // 1. Verify code against OTP service
-      const verifyRes = await verifyEmailOTP(adminEmail, currentOtpCode.trim());
+      // 1. Verify code against WhatsApp OTP service
+      const verifyRes = await verifyWhatsAppOTP(adminPhone, currentOtpCode.trim());
       if (!verifyRes?.success) {
         throw new Error(verifyRes?.message || 'Invalid verification code');
       }
@@ -246,7 +246,7 @@ export default function TeamTransfer() {
       });
 
       setCurrentOtpVerified(true);
-      setCurrentOtpMessage('✅ Current Team Admin authorization verified successfully! Now proceed to Step 2.');
+      setCurrentOtpMessage('✅ Current Team Admin authorization verified successfully via WhatsApp! Now proceed to Step 2.');
     } catch (err) {
       setCurrentOtpError(err.message || 'Invalid or expired OTP code');
     } finally {
@@ -255,12 +255,12 @@ export default function TeamTransfer() {
   };
 
   // -------------------------------------------------------------
-  // NEW TEAM ADMIN: Send Email OTP
+  // NEW TEAM ADMIN: Send WhatsApp OTP
   // -------------------------------------------------------------
   const handleSendNewAdminEmailOtp = async () => {
-    const adminEmail = transferResult?.new_team_admin?.admin_email;
-    if (!adminEmail) {
-      setNewOtpError('Receiving team does not have a registered administrator email');
+    const adminPhone = transferResult?.new_team_admin?.phone_number || transferResult?.new_team_admin?.admin_email;
+    if (!adminPhone) {
+      setNewOtpError('Receiving team does not have a registered administrator WhatsApp number');
       return;
     }
 
@@ -269,25 +269,25 @@ export default function TeamTransfer() {
     setNewOtpMessage(null);
 
     try {
-      await sendEmailOTP(
-        adminEmail,
+      await sendWhatsAppOTP(
+        adminPhone,
         `Transfer Acceptance Approval: ${playerData?.full_name || 'Player'}`
       );
       setNewOtpSent(true);
-      setNewOtpMessage(`Verification code dispatched to ${adminEmail}`);
+      setNewOtpMessage(`OTP sent to your WhatsApp number (+${String(adminPhone).replace(/\D/g, '')})`);
     } catch (err) {
-      setNewOtpError(err.message || 'Failed to dispatch email OTP to receiving team admin');
+      setNewOtpError(err.message || 'Failed to dispatch WhatsApp OTP to receiving team admin');
     } finally {
       setSendingNewOtp(false);
     }
   };
 
   // -------------------------------------------------------------
-  // NEW TEAM ADMIN: Check Email OTP & Finalize Transfer
+  // NEW TEAM ADMIN: Check WhatsApp OTP & Finalize Transfer
   // -------------------------------------------------------------
   const handleCheckNewAdminEmailOtp = async (e) => {
     if (e) e.preventDefault();
-    const adminEmail = transferResult?.new_team_admin?.admin_email;
+    const adminPhone = transferResult?.new_team_admin?.phone_number || transferResult?.new_team_admin?.admin_email;
 
     if (!newOtpCode.trim()) {
       setNewOtpError('Please enter the 6-digit verification code');
@@ -298,8 +298,8 @@ export default function TeamTransfer() {
     setNewOtpError(null);
 
     try {
-      // 1. Verify code against OTP service
-      const verifyRes = await verifyEmailOTP(adminEmail, newOtpCode.trim());
+      // 1. Verify code against WhatsApp OTP service
+      const verifyRes = await verifyWhatsAppOTP(adminPhone, newOtpCode.trim());
       if (!verifyRes?.success) {
         throw new Error(verifyRes?.message || 'Invalid verification code');
       }
@@ -316,7 +316,7 @@ export default function TeamTransfer() {
         setTransferApprovedData(finalizeRes.data);
       } else {
         setNewOtpVerified(true);
-        setNewOtpMessage('New Team Admin verified. Processing transfer approval...');
+        setNewOtpMessage('New Team Admin verified via WhatsApp. Processing transfer approval...');
       }
     } catch (err) {
       setNewOtpError(err.message || 'Invalid or expired OTP code');
@@ -329,9 +329,9 @@ export default function TeamTransfer() {
   // MUTUAL CLEARANCE: Send Clearance OTP to Previous Releasing Club Admin
   // -------------------------------------------------------------
   const handleSendClearanceOtp = async () => {
-    const adminEmail = playerData?.latest_transfer?.current_team_id?.admin_email;
-    if (!adminEmail) {
-      setClearanceError('Original releasing club does not have a registered admin email address');
+    const adminPhone = playerData?.latest_transfer?.current_team_id?.phone_number || playerData?.latest_transfer?.current_team_id?.admin_email;
+    if (!adminPhone) {
+      setClearanceError('Original releasing club does not have a registered admin WhatsApp phone number');
       return;
     }
 
@@ -339,11 +339,12 @@ export default function TeamTransfer() {
     setClearanceError(null);
 
     try {
-      await sendEmailOTP(
-        adminEmail,
+      await sendWhatsAppOTP(
+        adminPhone,
         `Mutual Clearance (14-Day Reduction) for ${playerData.full_name}`
       );
       setClearanceOtpSent(true);
+      setClearanceMessage(`OTP sent to your WhatsApp number (+${String(adminPhone).replace(/\D/g, '')})`);
     } catch (err) {
       setClearanceError(err.message || 'Failed to dispatch clearance OTP to releasing club admin');
     } finally {
@@ -356,7 +357,7 @@ export default function TeamTransfer() {
   // -------------------------------------------------------------
   const handleVerifyClearanceOtp = async (e) => {
     if (e) e.preventDefault();
-    const adminEmail = playerData?.latest_transfer?.current_team_id?.admin_email;
+    const adminPhone = playerData?.latest_transfer?.current_team_id?.phone_number || playerData?.latest_transfer?.current_team_id?.admin_email;
 
     if (!clearanceOtpCode.trim()) {
       setClearanceError('Please enter the 6-digit verification code');
@@ -367,8 +368,8 @@ export default function TeamTransfer() {
     setClearanceError(null);
 
     try {
-      // 1. Verify OTP code against email OTP service
-      const verifyRes = await verifyEmailOTP(adminEmail, clearanceOtpCode.trim());
+      // 1. Verify OTP code against WhatsApp OTP service
+      const verifyRes = await verifyWhatsAppOTP(adminPhone, clearanceOtpCode.trim());
       if (!verifyRes?.success) {
         throw new Error(verifyRes?.message || 'Invalid or expired verification code');
       }
@@ -635,10 +636,10 @@ export default function TeamTransfer() {
               </div>
 
               <div className="text-xs text-slate-300 flex items-center gap-2 mb-3 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
-                <Mail className="w-4 h-4 text-cyan-400 shrink-0" />
-                <span>Registered Email:</span>
-                <strong className="text-cyan-300 font-mono">
-                  {transferResult.current_team_admin?.admin_email || 'No email registered'}
+                <MessageSquare className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>Admin WhatsApp Number:</span>
+                <strong className="text-emerald-300 font-mono">
+                  {transferResult.current_team_admin?.phone_number || transferResult.current_team_admin?.admin_email || 'No phone registered'}
                 </strong>
               </div>
 
@@ -663,18 +664,18 @@ export default function TeamTransfer() {
                       <button
                         type="button"
                         onClick={handleSendCurrentAdminEmailOtp}
-                        disabled={sendingCurrentOtp || !transferResult.current_team_admin?.admin_email}
-                        className="flex items-center justify-center gap-2 px-4 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer disabled:opacity-50"
+                        disabled={sendingCurrentOtp || (!transferResult.current_team_admin?.phone_number && !transferResult.current_team_admin?.admin_email)}
+                        className="flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer disabled:opacity-50"
                       >
                         {sendingCurrentOtp ? (
                           <>
                             <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                            <span>Sending Email OTP...</span>
+                            <span>Sending WhatsApp OTP...</span>
                           </>
                         ) : (
                           <>
                             <Send className="w-3.5 h-3.5" />
-                            <span>Send OTP to Current Team Admin Email</span>
+                            <span>Send WhatsApp OTP to Current Admin</span>
                           </>
                         )}
                       </button>
@@ -686,7 +687,7 @@ export default function TeamTransfer() {
                           value={currentOtpCode}
                           onChange={(e) => setCurrentOtpCode(e.target.value.trim())}
                           placeholder="Enter 6-digit OTP"
-                          className="flex-1 px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-center text-sm font-mono tracking-widest text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          className="flex-1 px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-center text-sm font-mono tracking-widest text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
                         />
 
                         <button
@@ -784,10 +785,10 @@ export default function TeamTransfer() {
             </div>
 
             <div className="text-xs text-slate-300 flex items-center gap-2 mb-3 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
-              <Mail className="w-4 h-4 text-cyan-400 shrink-0" />
-              <span>Registered Email:</span>
-              <strong className="text-cyan-300 font-mono">
-                {transferResult.new_team_admin?.admin_email || 'No email registered'}
+              <MessageSquare className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>Admin WhatsApp Number:</span>
+              <strong className="text-emerald-300 font-mono">
+                {transferResult.new_team_admin?.phone_number || transferResult.new_team_admin?.admin_email || 'No phone registered'}
               </strong>
             </div>
 
@@ -810,7 +811,7 @@ export default function TeamTransfer() {
               <div className="p-3 rounded-xl bg-slate-950/50 border border-slate-800 text-xs text-slate-400 flex items-center gap-2">
                 <Lock className="w-4 h-4 text-amber-400 shrink-0" />
                 <span>
-                  Please complete <strong>Step 1</strong> (Current Team Admin Email OTP) to unlock Step 2.
+                  Please complete <strong>Step 1</strong> (Current Team Admin WhatsApp OTP) to unlock Step 2.
                 </span>
               </div>
             ) : !newOtpVerified ? (
@@ -820,18 +821,18 @@ export default function TeamTransfer() {
                     <button
                       type="button"
                       onClick={handleSendNewAdminEmailOtp}
-                      disabled={sendingNewOtp || !transferResult.new_team_admin?.admin_email}
-                      className="flex items-center justify-center gap-2 px-4 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer disabled:opacity-50"
+                      disabled={sendingNewOtp || (!transferResult.new_team_admin?.phone_number && !transferResult.new_team_admin?.admin_email)}
+                      className="flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer disabled:opacity-50"
                     >
                       {sendingNewOtp ? (
                         <>
                           <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                          <span>Sending Email OTP...</span>
+                          <span>Sending WhatsApp OTP...</span>
                         </>
                       ) : (
                         <>
                           <Send className="w-3.5 h-3.5" />
-                          <span>Send OTP to New Team Admin Email</span>
+                          <span>Send WhatsApp OTP to New Team Admin</span>
                         </>
                       )}
                     </button>
@@ -843,7 +844,7 @@ export default function TeamTransfer() {
                         value={newOtpCode}
                         onChange={(e) => setNewOtpCode(e.target.value.trim())}
                         placeholder="Enter 6-digit OTP"
-                        className="flex-1 px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-center text-sm font-mono tracking-widest text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                        className="flex-1 px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-center text-sm font-mono tracking-widest text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
                       />
 
                       <button
@@ -1017,10 +1018,10 @@ export default function TeamTransfer() {
                     ) : (
                       <div className="space-y-3 pt-2 border-t border-slate-800">
                         <div className="flex items-center gap-2 text-xs text-slate-300">
-                          <Mail className="w-4 h-4 text-cyan-400" />
-                          <span>Releasing Club Admin Email:</span>
-                          <strong className="text-cyan-300 font-mono">
-                            {playerData.latest_transfer.current_team_id?.admin_email || 'No email registered'}
+                          <MessageSquare className="w-4 h-4 text-emerald-400" />
+                          <span>Releasing Club Admin WhatsApp:</span>
+                          <strong className="text-emerald-300 font-mono">
+                            {playerData.latest_transfer.current_team_id?.phone_number || playerData.latest_transfer.current_team_id?.admin_email || 'No phone registered'}
                           </strong>
                         </div>
 
@@ -1036,18 +1037,18 @@ export default function TeamTransfer() {
                             <button
                               type="button"
                               onClick={handleSendClearanceOtp}
-                              disabled={sendingClearanceOtp || !playerData.latest_transfer.current_team_id?.admin_email}
-                              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer disabled:opacity-50"
+                              disabled={sendingClearanceOtp || (!playerData.latest_transfer.current_team_id?.phone_number && !playerData.latest_transfer.current_team_id?.admin_email)}
+                              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer disabled:opacity-50"
                             >
                               {sendingClearanceOtp ? (
                                 <>
                                   <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                                  <span>Sending Email OTP...</span>
+                                  <span>Sending WhatsApp OTP...</span>
                                 </>
                               ) : (
                                 <>
                                   <Send className="w-3.5 h-3.5" />
-                                  <span>Send OTP to Releasing Club Admin Email</span>
+                                  <span>Send WhatsApp OTP to Releasing Club Admin</span>
                                 </>
                               )}
                             </button>
@@ -1183,7 +1184,7 @@ export default function TeamTransfer() {
                     <span>Allowed by Current Team</span>
                   </div>
                   <p className="text-xs text-slate-400">
-                    Dual 2-Step Email OTP verification (Current Team Admin first, then Receiving Team Admin). Enforces a <strong className="text-emerald-400">14-Day (2 Weeks)</strong> cooling-off period.
+                    Dual 2-Step WhatsApp OTP verification (Current Team Admin first, then Receiving Team Admin). Enforces a <strong className="text-emerald-400">14-Day (2 Weeks)</strong> cooling-off period.
                   </p>
                 </div>
               </label>
@@ -1211,7 +1212,7 @@ export default function TeamTransfer() {
                     <span>Not Allowed by Current Team</span>
                   </div>
                   <p className="text-xs text-slate-400">
-                    Contested transfer. Current team is bypassed; requires Email OTP from Receiving Team Admin only. Enforces a strict mandatory <strong className="text-amber-400">30-Day (1 Month)</strong> cooling-off cooldown.
+                    Contested transfer. Current team is bypassed; requires WhatsApp OTP from Receiving Team Admin only. Enforces a strict mandatory <strong className="text-amber-400">30-Day (1 Month)</strong> cooling-off cooldown.
                   </p>
                 </div>
               </label>

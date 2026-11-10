@@ -43,8 +43,8 @@ import {
   deleteTeam,
   loginMasterAdmin,
   loginTeamAdmin,
-  sendEmailOTP,
-  verifyEmailOTP,
+  sendWhatsAppOTP,
+  verifyWhatsAppOTP,
   changeTeamPassword,
   changeTeamEmail
 } from '../api';
@@ -259,18 +259,12 @@ export default function TeamAdminPortal() {
   };
 
   // -------------------------------------------------------------
-  // Send Email OTP for Team Registration
+  // Send WhatsApp OTP for Team Registration
   // -------------------------------------------------------------
   const handleSendTeamEmailOtp = async () => {
-    const emailToVerify = newTeamData.admin_email.trim().toLowerCase();
-    if (!emailToVerify) {
-      setTeamEmailOtpError('Please enter an admin email address first');
-      return;
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(emailToVerify)) {
-      setTeamEmailOtpError('Please enter a valid email address (e.g. name@example.com)');
+    const phoneToVerify = newTeamData.phone_number?.trim() || newTeamData.admin_email?.trim();
+    if (!phoneToVerify) {
+      setTeamEmailOtpError('Please enter a WhatsApp phone number (with country code) first');
       return;
     }
 
@@ -279,28 +273,28 @@ export default function TeamAdminPortal() {
     setTeamEmailOtpMessage(null);
 
     try {
-      await sendEmailOTP(
-        emailToVerify,
+      await sendWhatsAppOTP(
+        phoneToVerify,
         `Team Admin Registration Authorization (${newTeamData.team_name || 'New Team'})`
       );
       setTeamEmailOtpSent(true);
-      setTeamEmailOtpMessage(`Verification code dispatched to ${emailToVerify}`);
+      setTeamEmailOtpMessage(`OTP sent to your WhatsApp number (+${phoneToVerify.replace(/\D/g, '')})`);
     } catch (err) {
-      setTeamEmailOtpError(err.message || 'Failed to dispatch email verification code');
+      setTeamEmailOtpError(err.message || 'Failed to dispatch WhatsApp verification code');
     } finally {
       setSendingTeamEmailOtp(false);
     }
   };
 
   // -------------------------------------------------------------
-  // Verify Email OTP Code for Team Registration
+  // Verify WhatsApp OTP Code for Team Registration
   // -------------------------------------------------------------
   const handleCheckTeamEmailOtp = async (e) => {
     if (e) e.preventDefault();
-    const emailToVerify = newTeamData.admin_email.trim().toLowerCase();
+    const phoneToVerify = newTeamData.phone_number?.trim() || newTeamData.admin_email?.trim();
 
     if (!teamEmailOtpCode.trim()) {
-      setTeamEmailOtpError('Please enter the 6-digit OTP code received in your email');
+      setTeamEmailOtpError('Please enter the 6-digit OTP code received on WhatsApp');
       return;
     }
 
@@ -308,10 +302,10 @@ export default function TeamAdminPortal() {
     setTeamEmailOtpError(null);
 
     try {
-      const res = await verifyEmailOTP(emailToVerify, teamEmailOtpCode.trim());
+      const res = await verifyWhatsAppOTP(phoneToVerify, teamEmailOtpCode.trim());
       if (res?.success) {
         setTeamEmailVerified(true);
-        setTeamEmailOtpMessage('✅ Email verified successfully! You can now create the club team.');
+        setTeamEmailOtpMessage('✅ WhatsApp verified successfully! You can now register the club team.');
       }
     } catch (err) {
       setTeamEmailOtpError(err.message || 'Invalid or expired OTP code. Please try again.');
@@ -599,17 +593,18 @@ export default function TeamAdminPortal() {
   };
 
   const handleSendPasswordOtp = async () => {
-    if (!authenticatedTeam?.admin_email) {
-      setPwdModalError('No registered admin email found for this club');
+    const adminPhone = authenticatedTeam?.phone_number || authenticatedTeam?.admin_email;
+    if (!adminPhone) {
+      setPwdModalError('No registered admin WhatsApp phone number found for this club');
       return;
     }
     setPwdOtpSending(true);
     setPwdModalError(null);
     try {
-      await sendEmailOTP(authenticatedTeam.admin_email, 'Team Admin Password Change Authorization');
+      await sendWhatsAppOTP(adminPhone, 'Team Admin Password Change Authorization');
       setPwdOtpSent(true);
     } catch (err) {
-      setPwdModalError(err.message || 'Failed to dispatch OTP to admin email');
+      setPwdModalError(err.message || 'Failed to dispatch OTP to admin WhatsApp');
     } finally {
       setPwdOtpSending(false);
     }
@@ -617,6 +612,7 @@ export default function TeamAdminPortal() {
 
   const handleVerifyPasswordOtp = async (e) => {
     if (e) e.preventDefault();
+    const adminPhone = authenticatedTeam?.phone_number || authenticatedTeam?.admin_email;
     if (!pwdOtpCode.trim()) {
       setPwdModalError('Please enter the 6-digit OTP code');
       return;
@@ -624,7 +620,7 @@ export default function TeamAdminPortal() {
     setPwdOtpVerifying(true);
     setPwdModalError(null);
     try {
-      const res = await verifyEmailOTP(authenticatedTeam.admin_email, pwdOtpCode.trim());
+      const res = await verifyWhatsAppOTP(adminPhone, pwdOtpCode.trim());
       if (res?.success) {
         setPwdOtpVerified(true);
       }
@@ -701,32 +697,34 @@ export default function TeamAdminPortal() {
   // Step 1: Send OTP to Current Email
   const handleSendCurrEmailOtp = async () => {
     if (!authenticatedTeam?.admin_email) {
-      setEmailModalError('No current admin email found');
+      setEmailModalError('No current admin WhatsApp number found');
       return;
     }
+    const currPhone = authenticatedTeam.phone_number || authenticatedTeam.admin_email;
     setCurrEmailOtpSending(true);
     setEmailModalError(null);
     try {
-      await sendEmailOTP(authenticatedTeam.admin_email, 'Authorization to Change Admin Email');
+      await sendWhatsAppOTP(currPhone, 'Authorization to Change Admin Contact');
       setCurrEmailOtpSent(true);
     } catch (err) {
-      setEmailModalError(err.message || 'Failed to dispatch OTP to current email');
+      setEmailModalError(err.message || 'Failed to dispatch OTP to current WhatsApp');
     } finally {
       setCurrEmailOtpSending(false);
     }
   };
 
-  // Step 1: Verify OTP for Current Email
+  // Step 1: Verify OTP for Current Contact
   const handleVerifyCurrEmailOtp = async (e) => {
     if (e) e.preventDefault();
     if (!currEmailOtpCode.trim()) {
-      setEmailModalError('Please enter the OTP code received at current email');
+      setEmailModalError('Please enter the OTP code received on WhatsApp');
       return;
     }
+    const currPhone = authenticatedTeam.phone_number || authenticatedTeam.admin_email;
     setCurrEmailOtpVerifying(true);
     setEmailModalError(null);
     try {
-      const res = await verifyEmailOTP(authenticatedTeam.admin_email, currEmailOtpCode.trim());
+      const res = await verifyWhatsAppOTP(currPhone, currEmailOtpCode.trim());
       if (res?.success) {
         setCurrEmailVerified(true);
         setEmailChangeStep(2);
@@ -738,46 +736,37 @@ export default function TeamAdminPortal() {
     }
   };
 
-  // Step 2: Send OTP to New Email
+  // Step 2: Send OTP to New Contact
   const handleSendNewEmailOtp = async () => {
-    const emailToVerify = newAdminEmail.trim().toLowerCase();
-    if (!emailToVerify) {
-      setEmailModalError('Please enter your new admin email address');
-      return;
-    }
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(emailToVerify)) {
-      setEmailModalError('Please enter a valid email address');
-      return;
-    }
-    if (emailToVerify === authenticatedTeam.admin_email.toLowerCase()) {
-      setEmailModalError('New email cannot be identical to current email');
+    const contactToVerify = newAdminEmail.trim();
+    if (!contactToVerify) {
+      setEmailModalError('Please enter your new WhatsApp number or contact');
       return;
     }
 
     setNewEmailOtpSending(true);
     setEmailModalError(null);
     try {
-      await sendEmailOTP(emailToVerify, 'New Admin Email Verification');
+      await sendWhatsAppOTP(contactToVerify, 'New Admin Contact Verification');
       setNewEmailOtpSent(true);
     } catch (err) {
-      setEmailModalError(err.message || 'Failed to dispatch verification code to new email');
+      setEmailModalError(err.message || 'Failed to dispatch verification code to new WhatsApp');
     } finally {
       setNewEmailOtpSending(false);
     }
   };
 
-  // Step 2: Verify OTP for New Email
+  // Step 2: Verify OTP for New Contact
   const handleVerifyNewEmailOtp = async (e) => {
     if (e) e.preventDefault();
     if (!newEmailOtpCode.trim()) {
-      setEmailModalError('Please enter the 6-digit OTP received at new email');
+      setEmailModalError('Please enter the 6-digit OTP received on WhatsApp');
       return;
     }
     setNewEmailOtpVerifying(true);
     setEmailModalError(null);
     try {
-      const res = await verifyEmailOTP(newAdminEmail.trim().toLowerCase(), newEmailOtpCode.trim());
+      const res = await verifyWhatsAppOTP(newAdminEmail.trim(), newEmailOtpCode.trim());
       if (res?.success) {
         setNewEmailVerified(true);
         setEmailChangeStep(3);
@@ -1019,30 +1008,34 @@ export default function TeamAdminPortal() {
                       />
                     </div>
 
-                    {/* Admin Contact Email & OTP Verification */}
+                    {/* Admin WhatsApp & OTP Verification */}
                     <div className="space-y-2 p-3.5 rounded-xl bg-slate-900/90 border border-slate-700">
                       <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
-                        Admin Email Address <span className="text-emerald-400">*</span>
+                        WhatsApp Number (with Country Code) <span className="text-emerald-400">*</span>
                       </label>
                       <input
-                        type="email"
-                        value={newTeamData.admin_email}
+                        type="tel"
+                        value={newTeamData.phone_number}
                         onChange={(e) => {
                           const val = e.target.value;
-                          setNewTeamData((prev) => ({ ...prev, admin_email: val }));
-                          // Reset OTP verification if email is changed
+                          setNewTeamData((prev) => ({ 
+                            ...prev, 
+                            phone_number: val,
+                            admin_email: prev.admin_email || `${val.replace(/\D/g, '')}@cricpass.lk` 
+                          }));
+                          // Reset OTP verification if phone is changed
                           setTeamEmailVerified(false);
                           setTeamEmailOtpSent(false);
                           setTeamEmailOtpCode('');
                           setTeamEmailOtpMessage(null);
                           setTeamEmailOtpError(null);
                         }}
-                        placeholder="e.g. admin@gallecricket.com"
+                        placeholder="e.g. 94771234567 or 0771234567"
                         className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm"
                         required
                       />
 
-                      {/* Email OTP Verification Section */}
+                      {/* WhatsApp OTP Verification Section */}
                       {teamEmailOtpMessage && (
                         <div className="p-2 rounded-lg bg-emerald-950/60 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
                           <CheckCircle className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
@@ -1063,18 +1056,18 @@ export default function TeamAdminPortal() {
                             <button
                               type="button"
                               onClick={handleSendTeamEmailOtp}
-                              disabled={sendingTeamEmailOtp || !newTeamData.admin_email.trim()}
-                              className="w-full flex items-center justify-center gap-2 px-3.5 py-2 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer disabled:opacity-50"
+                              disabled={sendingTeamEmailOtp || !newTeamData.phone_number.trim()}
+                              className="w-full flex items-center justify-center gap-2 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer disabled:opacity-50"
                             >
                               {sendingTeamEmailOtp ? (
                                 <>
                                   <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                                  <span>Sending OTP to Email...</span>
+                                  <span>Sending OTP to WhatsApp...</span>
                                 </>
                               ) : (
                                 <>
                                   <Send className="w-3.5 h-3.5" />
-                                  <span>Send OTP to Admin Email</span>
+                                  <span>Send OTP to WhatsApp Number</span>
                                 </>
                               )}
                             </button>
@@ -1086,7 +1079,7 @@ export default function TeamAdminPortal() {
                                 value={teamEmailOtpCode}
                                 onChange={(e) => setTeamEmailOtpCode(e.target.value.trim())}
                                 placeholder="Enter 6-digit OTP"
-                                className="flex-1 px-3.5 py-2 bg-slate-950 border border-slate-700 rounded-xl text-center text-sm font-mono tracking-widest text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                                className="flex-1 px-3.5 py-2 bg-slate-950 border border-slate-700 rounded-xl text-center text-sm font-mono tracking-widest text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
                               />
 
                               <button
@@ -1123,7 +1116,7 @@ export default function TeamAdminPortal() {
                         <div className="p-2.5 rounded-lg bg-emerald-950/80 border border-emerald-500/40 flex items-center justify-between text-xs">
                           <div className="flex items-center gap-2 text-emerald-300 font-bold">
                             <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                            <span>Email Verified! Ready for Registration</span>
+                            <span>WhatsApp Number Verified! Ready for Registration</span>
                           </div>
                           <span className="text-[10px] bg-emerald-900/80 text-emerald-300 px-2 py-0.5 rounded font-mono font-bold">
                             VERIFIED
@@ -2334,11 +2327,11 @@ export default function TeamAdminPortal() {
               <div className="space-y-4">
                 <div className="p-3 rounded-xl bg-slate-900 border border-slate-700 text-xs space-y-1">
                   <span className="text-slate-400 block font-medium">Verification Code Recipient:</span>
-                  <span className="text-cyan-400 font-mono font-bold text-sm">
-                    {authenticatedTeam?.admin_email}
+                  <span className="text-emerald-400 font-mono font-bold text-sm">
+                    {authenticatedTeam?.phone_number || authenticatedTeam?.admin_email}
                   </span>
                   <p className="text-[11px] text-slate-400 mt-1">
-                    An OTP must be verified on your registered email address before setting a new password.
+                    An OTP must be verified on your registered WhatsApp number before setting a new password.
                   </p>
                 </div>
 
@@ -2347,17 +2340,17 @@ export default function TeamAdminPortal() {
                     type="button"
                     onClick={handleSendPasswordOtp}
                     disabled={pwdOtpSending}
-                    className="w-full flex items-center justify-center gap-2 py-3 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-xl text-xs sm:text-sm transition-colors cursor-pointer disabled:opacity-50"
+                    className="w-full flex items-center justify-center gap-2 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs sm:text-sm transition-colors cursor-pointer disabled:opacity-50"
                   >
                     {pwdOtpSending ? (
                       <>
                         <RefreshCw className="w-4 h-4 animate-spin" />
-                        <span>Sending OTP to Email...</span>
+                        <span>Sending OTP to WhatsApp...</span>
                       </>
                     ) : (
                       <>
                         <Send className="w-4 h-4" />
-                        <span>Send OTP to Admin Email</span>
+                        <span>Send OTP to Admin WhatsApp</span>
                       </>
                     )}
                   </button>
@@ -2365,7 +2358,7 @@ export default function TeamAdminPortal() {
                   <form onSubmit={handleVerifyPasswordOtp} className="space-y-3">
                     <div className="space-y-1.5">
                       <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
-                        Enter 6-Digit Email OTP
+                        Enter 6-Digit WhatsApp OTP
                       </label>
                       <input
                         type="text"
@@ -2373,7 +2366,7 @@ export default function TeamAdminPortal() {
                         value={pwdOtpCode}
                         onChange={(e) => setPwdOtpCode(e.target.value.trim())}
                         placeholder="000000"
-                        className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-center text-xl font-mono tracking-widest text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                        className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-center text-xl font-mono tracking-widest text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
                         required
                       />
                     </div>
@@ -2541,12 +2534,12 @@ export default function TeamAdminPortal() {
             {emailChangeStep === 1 && (
               <div className="space-y-4">
                 <div className="p-3 rounded-xl bg-slate-900 border border-slate-700 text-xs space-y-1">
-                  <span className="text-slate-400 block font-medium">Current Registered Email:</span>
+                  <span className="text-slate-400 block font-medium">Current Registered WhatsApp / Contact:</span>
                   <span className="text-white font-mono font-bold text-sm">
-                    {authenticatedTeam?.admin_email}
+                    {authenticatedTeam?.phone_number || authenticatedTeam?.admin_email}
                   </span>
                   <p className="text-[11px] text-slate-400 mt-1">
-                    Step 1 requires proving ownership of your current registered email.
+                    Step 1 requires verifying authorization on your current registered WhatsApp number.
                   </p>
                 </div>
 
@@ -2560,12 +2553,12 @@ export default function TeamAdminPortal() {
                     {currEmailOtpSending ? (
                       <>
                         <RefreshCw className="w-4 h-4 animate-spin" />
-                        <span>Sending OTP to Current Email...</span>
+                        <span>Sending OTP to WhatsApp...</span>
                       </>
                     ) : (
                       <>
                         <Send className="w-4 h-4" />
-                        <span>Send OTP to Current Email</span>
+                        <span>Send OTP to Current WhatsApp</span>
                       </>
                     )}
                   </button>
@@ -2573,7 +2566,7 @@ export default function TeamAdminPortal() {
                   <form onSubmit={handleVerifyCurrEmailOtp} className="space-y-3">
                     <div className="space-y-1.5">
                       <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
-                        Enter OTP Sent to Current Email
+                        Enter OTP Sent to Current WhatsApp
                       </label>
                       <input
                         type="text"
@@ -2592,7 +2585,7 @@ export default function TeamAdminPortal() {
                         disabled={currEmailOtpVerifying || !currEmailOtpCode.trim()}
                         className="flex-1 py-2.5 bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 text-white font-bold rounded-xl text-xs transition-all cursor-pointer disabled:opacity-50"
                       >
-                        {currEmailOtpVerifying ? 'Verifying OTP...' : 'Verify Current Email OTP'}
+                        {currEmailOtpVerifying ? 'Verifying OTP...' : 'Verify WhatsApp OTP'}
                       </button>
 
                       <button
@@ -2609,22 +2602,22 @@ export default function TeamAdminPortal() {
               </div>
             )}
 
-            {/* STEP 2: VERIFY NEW EMAIL */}
+            {/* STEP 2: VERIFY NEW CONTACT */}
             {emailChangeStep === 2 && (
               <div className="space-y-4">
                 <div className="space-y-1.5">
                   <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
-                    Enter New Admin Email Address
+                    WhatsApp Number (with Country Code)
                   </label>
                   <input
-                    type="email"
+                    type="tel"
                     value={newAdminEmail}
                     onChange={(e) => {
                       setNewAdminEmail(e.target.value);
                       setNewEmailOtpSent(false);
                       setNewEmailOtpCode('');
                     }}
-                    placeholder="e.g. newadmin@cricketclub.com"
+                    placeholder="e.g. 94771234567 or 0771234567"
                     className="w-full px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                     required
                   />
@@ -2640,12 +2633,12 @@ export default function TeamAdminPortal() {
                     {newEmailOtpSending ? (
                       <>
                         <RefreshCw className="w-4 h-4 animate-spin" />
-                        <span>Sending OTP to New Email...</span>
+                        <span>Sending OTP to New WhatsApp...</span>
                       </>
                     ) : (
                       <>
                         <Send className="w-4 h-4" />
-                        <span>Send OTP to New Email</span>
+                        <span>Send OTP to New WhatsApp</span>
                       </>
                     )}
                   </button>
@@ -2653,7 +2646,7 @@ export default function TeamAdminPortal() {
                   <form onSubmit={handleVerifyNewEmailOtp} className="space-y-3">
                     <div className="space-y-1.5">
                       <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
-                        Enter OTP Sent to New Email ({newAdminEmail})
+                        Enter OTP Sent to New WhatsApp ({newAdminEmail})
                       </label>
                       <input
                         type="text"
@@ -2672,7 +2665,7 @@ export default function TeamAdminPortal() {
                         disabled={newEmailOtpVerifying || !newEmailOtpCode.trim()}
                         className="flex-1 py-2.5 bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 text-white font-bold rounded-xl text-xs transition-all cursor-pointer disabled:opacity-50"
                       >
-                        {newEmailOtpVerifying ? 'Verifying...' : 'Verify New Email OTP'}
+                        {newEmailOtpVerifying ? 'Verifying...' : 'Verify New WhatsApp OTP'}
                       </button>
 
                       <button

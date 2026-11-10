@@ -13,9 +13,10 @@ import {
   Mail,
   KeyRound,
   ShieldCheck,
-  Send
+  Send,
+  MessageSquare
 } from 'lucide-react';
-import { getTeams, registerPlayer, sendEmailOTP, verifyEmailOTP } from '../api';
+import { getTeams, registerPlayer, sendWhatsAppOTP, verifyWhatsAppOTP } from '../api';
 
 export default function PlayerRegister({ onPlayerRegistered }) {
   const [teams, setTeams] = useState([]);
@@ -127,17 +128,17 @@ export default function PlayerRegister({ onPlayerRegistered }) {
   };
 
   // -------------------------------------------------------------
-  // Send Email OTP to Selected Team Admin
+  // Send WhatsApp OTP to Selected Team Admin
   // -------------------------------------------------------------
-  const handleSendAdminEmailOtp = async () => {
+  const handleSendAdminWhatsAppOtp = async () => {
     if (!selectedTeam) {
       setOtpError('Please select a club first');
       return;
     }
 
-    const adminEmail = selectedTeam.admin_email;
-    if (!adminEmail) {
-      setOtpError('This club does not have a registered administrator email address');
+    const adminPhone = selectedTeam.phone_number;
+    if (!adminPhone) {
+      setOtpError('This club does not have a registered administrator WhatsApp number');
       return;
     }
 
@@ -146,28 +147,28 @@ export default function PlayerRegister({ onPlayerRegistered }) {
     setOtpMessage(null);
 
     try {
-      const res = await sendEmailOTP(
-        adminEmail,
+      await sendWhatsAppOTP(
+        adminPhone,
         `Player Registration Approval (${formData.full_name || 'New Player'})`
       );
       setOtpSent(true);
-      setOtpMessage(`Verification code successfully sent to team admin: ${adminEmail}`);
+      setOtpMessage(`OTP sent to your WhatsApp number (+${adminPhone.replace(/\D/g, '')})`);
     } catch (err) {
-      setOtpError(err.message || 'Failed to dispatch email OTP');
+      setOtpError(err.message || 'Failed to dispatch WhatsApp OTP');
     } finally {
       setSendingOtp(false);
     }
   };
 
   // -------------------------------------------------------------
-  // Verify Email OTP Code
+  // Verify WhatsApp OTP Code
   // -------------------------------------------------------------
-  const handleCheckEmailOtp = async (e) => {
+  const handleCheckWhatsAppOtp = async (e) => {
     if (e) e.preventDefault();
-    if (!selectedTeam?.admin_email) return;
+    if (!selectedTeam?.phone_number) return;
 
     if (!otpCode.trim()) {
-      setOtpError('Please enter the 6-digit code received via email');
+      setOtpError('Please enter the 6-digit code received via WhatsApp');
       return;
     }
 
@@ -175,10 +176,10 @@ export default function PlayerRegister({ onPlayerRegistered }) {
     setOtpError(null);
 
     try {
-      const res = await verifyEmailOTP(selectedTeam.admin_email, otpCode.trim());
+      const res = await verifyWhatsAppOTP(selectedTeam.phone_number, otpCode.trim());
       if (res?.success) {
         setOtpVerified(true);
-        setOtpMessage('✅ OTP Verified! Team Admin has authorized this player registration.');
+        setOtpMessage('✅ OTP Verified! Team Admin has authorized this player registration via WhatsApp.');
       }
     } catch (err) {
       setOtpError(err.message || 'Invalid or expired OTP code');
@@ -428,19 +429,19 @@ export default function PlayerRegister({ onPlayerRegistered }) {
               </div>
             </div>
 
-            {/* TEAM ADMIN EMAIL OTP VERIFICATION SECTION */}
+            {/* TEAM ADMIN WHATSAPP OTP VERIFICATION SECTION */}
             {selectedTeam && (
-              <div className="sm:col-span-2 p-4 rounded-xl bg-slate-900/90 border border-cyan-500/40 space-y-3 animate-fadeIn">
+              <div className="sm:col-span-2 p-4 rounded-xl bg-slate-900/90 border border-emerald-500/40 space-y-3 animate-fadeIn">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-2.5">
                   <div className="flex items-center gap-2">
-                    <Mail className="w-4 h-4 text-cyan-400" />
+                    <MessageSquare className="w-4 h-4 text-emerald-400" />
                     <span className="text-xs font-bold uppercase tracking-wider text-white">
-                      Team Admin Email Authorization
+                      Team Admin WhatsApp Authorization
                     </span>
                   </div>
 
                   <div className="text-xs text-slate-400 font-mono">
-                    Admin Email: <strong className="text-cyan-300">{selectedTeam.admin_email || 'No email registered'}</strong>
+                    Admin WhatsApp: <strong className="text-emerald-300">{selectedTeam.phone_number || 'No phone registered'}</strong>
                   </div>
                 </div>
 
@@ -461,26 +462,26 @@ export default function PlayerRegister({ onPlayerRegistered }) {
                 {!otpVerified ? (
                   <div className="space-y-3 pt-1">
                     <p className="text-xs text-slate-300">
-                      To register under <strong>{selectedTeam.team_name}</strong>, a verification code must be sent to the team admin's email ({selectedTeam.admin_email}).
+                      To register under <strong>{selectedTeam.team_name}</strong>, a verification code must be sent to the team admin's WhatsApp number ({selectedTeam.phone_number}).
                     </p>
 
                     <div className="flex flex-col sm:flex-row gap-2.5">
                       {!otpSent ? (
                         <button
                           type="button"
-                          onClick={handleSendAdminEmailOtp}
-                          disabled={sendingOtp || !selectedTeam.admin_email}
-                          className="flex items-center justify-center gap-2 px-4 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer disabled:opacity-50"
+                          onClick={handleSendAdminWhatsAppOtp}
+                          disabled={sendingOtp || !selectedTeam.phone_number}
+                          className="flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer disabled:opacity-50"
                         >
                           {sendingOtp ? (
                             <>
                               <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                              <span>Sending Email OTP...</span>
+                              <span>Sending WhatsApp OTP...</span>
                             </>
                           ) : (
                             <>
                               <Send className="w-3.5 h-3.5" />
-                              <span>Send OTP to Team Admin Email</span>
+                              <span>Send OTP to Team Admin WhatsApp</span>
                             </>
                           )}
                         </button>
@@ -492,12 +493,12 @@ export default function PlayerRegister({ onPlayerRegistered }) {
                             value={otpCode}
                             onChange={(e) => setOtpCode(e.target.value.trim())}
                             placeholder="Enter 6-digit OTP"
-                            className="flex-1 px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-center text-sm font-mono tracking-widest text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                            className="flex-1 px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-center text-sm font-mono tracking-widest text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
                           />
 
                           <button
                             type="button"
-                            onClick={handleCheckEmailOtp}
+                            onClick={handleCheckWhatsAppOtp}
                             disabled={verifyingOtp || !otpCode}
                             className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold rounded-xl text-xs transition-all cursor-pointer disabled:opacity-50"
                           >
@@ -516,7 +517,7 @@ export default function PlayerRegister({ onPlayerRegistered }) {
 
                           <button
                             type="button"
-                            onClick={handleSendAdminEmailOtp}
+                            onClick={handleSendAdminWhatsAppOtp}
                             disabled={sendingOtp}
                             className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold border border-slate-700 transition-colors"
                           >
@@ -530,7 +531,7 @@ export default function PlayerRegister({ onPlayerRegistered }) {
                   <div className="p-3 rounded-lg bg-emerald-950/80 border border-emerald-500/40 flex items-center justify-between text-xs">
                     <div className="flex items-center gap-2 text-emerald-300 font-bold">
                       <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                      <span>Authorization Approved by {selectedTeam.admin_name} ({selectedTeam.admin_email})</span>
+                      <span>Authorization Approved by {selectedTeam.admin_name} ({selectedTeam.phone_number})</span>
                     </div>
                     <span className="text-[11px] bg-emerald-900/80 text-emerald-300 px-2 py-0.5 rounded font-mono font-bold">
                       VERIFIED
