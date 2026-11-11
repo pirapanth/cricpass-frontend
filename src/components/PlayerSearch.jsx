@@ -236,7 +236,7 @@ export default function PlayerSearch() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2 text-amber-400 font-bold text-sm">
                       <Clock className="w-4 h-4" />
-                      <span>Cooling-Off Protocol Active in Database</span>
+                      <span>Cooling-Off Protocol Active</span>
                     </div>
                     <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
                       {player.remaining_cooling_off_days} Days Left

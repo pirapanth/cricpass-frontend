@@ -17,13 +17,20 @@ import {
   MessageSquare
 } from 'lucide-react';
 import { getTeams, registerPlayer, sendWhatsAppOTP, verifyWhatsAppOTP } from '../api';
+import {
+  handlePlus94PhoneInput,
+  handlePlus94KeyDown,
+  isValidPlus94Phone,
+  formatDisplayPhone,
+  maskDisplayPhone,
+} from '../utils/phoneUtils';
 
 export default function PlayerRegister({ onPlayerRegistered }) {
   const [teams, setTeams] = useState([]);
   const [formData, setFormData] = useState({
     full_name: '',
     nic_number: '',
-    phone_number: '',
+    phone_number: '+94',
     image_url: '',
     current_team_id: ''
   });
@@ -57,7 +64,7 @@ export default function PlayerRegister({ onPlayerRegistered }) {
         setTeams(res.data);
       }
     } catch (err) {
-      console.error('Failed to load teams from database:', err);
+      console.error('Failed to load teams:', err);
     }
   };
 
@@ -69,8 +76,7 @@ export default function PlayerRegister({ onPlayerRegistered }) {
     if (name === 'nic_number') {
       finalValue = value.toUpperCase();
     } else if (name === 'phone_number') {
-      // Limit to max 10 digits only
-      finalValue = value.replace(/\D/g, '').slice(0, 10);
+      finalValue = handlePlus94PhoneInput(value);
     }
 
     setFormData((prev) => ({
@@ -136,7 +142,7 @@ export default function PlayerRegister({ onPlayerRegistered }) {
       return;
     }
 
-    const adminPhone = selectedTeam.phone_number;
+    const adminPhone = formatDisplayPhone(selectedTeam.phone_number);
     if (!adminPhone) {
       setOtpError('This club does not have a registered administrator WhatsApp number');
       return;
@@ -152,7 +158,7 @@ export default function PlayerRegister({ onPlayerRegistered }) {
         `Player Registration Approval (${formData.full_name || 'New Player'})`
       );
       setOtpSent(true);
-      setOtpMessage(`OTP sent to your WhatsApp number (+${adminPhone.replace(/\D/g, '')})`);
+      setOtpMessage(`OTP sent to your WhatsApp number (${maskDisplayPhone(adminPhone)})`);
     } catch (err) {
       setOtpError(err.message || 'Failed to dispatch WhatsApp OTP');
     } finally {
@@ -165,7 +171,8 @@ export default function PlayerRegister({ onPlayerRegistered }) {
   // -------------------------------------------------------------
   const handleCheckWhatsAppOtp = async (e) => {
     if (e) e.preventDefault();
-    if (!selectedTeam?.phone_number) return;
+    const adminPhone = formatDisplayPhone(selectedTeam?.phone_number);
+    if (!adminPhone) return;
 
     if (!otpCode.trim()) {
       setOtpError('Please enter the 6-digit code received via WhatsApp');
@@ -176,7 +183,7 @@ export default function PlayerRegister({ onPlayerRegistered }) {
     setOtpError(null);
 
     try {
-      const res = await verifyWhatsAppOTP(selectedTeam.phone_number, otpCode.trim());
+      const res = await verifyWhatsAppOTP(adminPhone, otpCode.trim());
       if (res?.success) {
         setOtpVerified(true);
         setOtpMessage('✅ OTP Verified! Team Admin has authorized this player registration via WhatsApp.');
@@ -203,18 +210,18 @@ export default function PlayerRegister({ onPlayerRegistered }) {
       setError('NIC Number is required');
       return;
     }
-    if (!formData.phone_number.trim()) {
+    if (!formData.phone_number.trim() || formData.phone_number.trim() === '+94') {
       setError('Phone Number is required');
       return;
     }
-    if (formData.phone_number.trim().length !== 10) {
-      setError('Contact Phone Number must be exactly 10 digits (e.g. 0771234567)');
+    if (!isValidPlus94Phone(formData.phone_number.trim())) {
+      setError('Contact Phone Number must be +94 followed by 9 digits without a leading 0 (e.g. +94771454651)');
       return;
     }
 
-    // If assigning to a club, email OTP verification is mandatory!
+    // If assigning to a club, WhatsApp OTP verification is mandatory!
     if (formData.current_team_id && !otpVerified) {
-      setError('Club admin email OTP authorization is required before registering to a team.');
+      setError('Club admin WhatsApp OTP authorization is required before registering to a team.');
       return;
     }
 
@@ -245,7 +252,7 @@ export default function PlayerRegister({ onPlayerRegistered }) {
     setFormData({
       full_name: '',
       nic_number: '',
-      phone_number: '',
+      phone_number: '+94',
       image_url: '',
       current_team_id: ''
     });
@@ -271,7 +278,7 @@ export default function PlayerRegister({ onPlayerRegistered }) {
           Register New Cricket Player
         </h1>
         <p className="text-slate-400 text-sm sm:text-base max-w-xl mx-auto">
-          Enroll a cricket player into MongoDB Atlas with unique NIC verification and Team Admin Email OTP authorization.
+          Enroll a cricket player with unique NIC verification and Team Admin Email OTP authorization.
         </p>
       </div>
 
@@ -292,7 +299,7 @@ export default function PlayerRegister({ onPlayerRegistered }) {
             )}
             <div>
               <span className="text-xs font-bold uppercase tracking-widest text-emerald-400 bg-emerald-950 px-2.5 py-0.5 rounded border border-emerald-500/30">
-                Saved in MongoDB Atlas
+                Saved
               </span>
               <h2 className="text-2xl font-bold text-white mt-1">
                 {successData.full_name} Successfully Registered!
@@ -392,12 +399,13 @@ export default function PlayerRegister({ onPlayerRegistered }) {
                   <Phone className="w-4 h-4" />
                 </div>
                 <input
-                  type="text"
+                  type="tel"
                   name="phone_number"
                   value={formData.phone_number}
+                  onKeyDown={handlePlus94KeyDown}
                   onChange={handleChange}
-                  placeholder="e.g. 0771234567 (10 digits)"
-                  maxLength={10}
+                  placeholder="+94771454651"
+                  maxLength={12}
                   className="w-full pl-10 pr-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm font-mono"
                   required
                 />
@@ -407,7 +415,7 @@ export default function PlayerRegister({ onPlayerRegistered }) {
             {/* Team Selection */}
             <div className="sm:col-span-2 space-y-2">
               <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
-                Select Club / Team Assignment (From Database)
+                Select Club / Team Assignment
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
@@ -441,7 +449,7 @@ export default function PlayerRegister({ onPlayerRegistered }) {
                   </div>
 
                   <div className="text-xs text-slate-400 font-mono">
-                    Admin WhatsApp: <strong className="text-emerald-300">{selectedTeam.phone_number || 'No phone registered'}</strong>
+                    Admin WhatsApp: <strong className="text-emerald-300">{maskDisplayPhone(selectedTeam.phone_number) || 'No phone registered'}</strong>
                   </div>
                 </div>
 
@@ -462,7 +470,7 @@ export default function PlayerRegister({ onPlayerRegistered }) {
                 {!otpVerified ? (
                   <div className="space-y-3 pt-1">
                     <p className="text-xs text-slate-300">
-                      To register under <strong>{selectedTeam.team_name}</strong>, a verification code must be sent to the team admin's WhatsApp number ({selectedTeam.phone_number}).
+                      To register under <strong>{selectedTeam.team_name}</strong>, a verification code must be sent to the team admin's WhatsApp number ({maskDisplayPhone(selectedTeam.phone_number) || 'No phone registered'}).
                     </p>
 
                     <div className="flex flex-col sm:flex-row gap-2.5">
@@ -531,7 +539,7 @@ export default function PlayerRegister({ onPlayerRegistered }) {
                   <div className="p-3 rounded-lg bg-emerald-950/80 border border-emerald-500/40 flex items-center justify-between text-xs">
                     <div className="flex items-center gap-2 text-emerald-300 font-bold">
                       <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                      <span>Authorization Approved by {selectedTeam.admin_name} ({selectedTeam.phone_number})</span>
+                      <span>Authorization Approved by {selectedTeam.admin_name} ({maskDisplayPhone(selectedTeam.phone_number)})</span>
                     </div>
                     <span className="text-[11px] bg-emerald-900/80 text-emerald-300 px-2 py-0.5 rounded font-mono font-bold">
                       VERIFIED
@@ -621,7 +629,7 @@ export default function PlayerRegister({ onPlayerRegistered }) {
               {loading ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin" />
-                  <span>Saving Player to MongoDB Atlas...</span>
+                  <span>Saving Player...</span>
                 </>
               ) : formData.current_team_id && !otpVerified ? (
                 <span className="flex items-center gap-2">
@@ -629,7 +637,7 @@ export default function PlayerRegister({ onPlayerRegistered }) {
                   <span>Verify Team Admin Email OTP to Enable Registration</span>
                 </span>
               ) : (
-                <span>Save & Register Player in Database</span>
+                <span>Save & Register</span>
               )}
             </button>
           </div>

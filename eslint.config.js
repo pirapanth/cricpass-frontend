@@ -19,6 +19,11 @@ export default defineConfig([
     },
     rules: {
       'no-unused-vars': 'off', // Disables errors/warnings for unused variables & imports
+      'no-use-before-define': ['error', { 
+        functions: false, // Allows standard hoisted function declarations before definition
+        classes: true, 
+        variables: true 
+      }],
     },
   },
 ])

@@ -1,23 +1,57 @@
 import axios from 'axios';
 
-// Sanitize base URL: strip trailing slash and guarantee clean /api endpoint prefix
-const rawBaseUrl = (import.meta.env.VITE_API_URL || 'https://cricpass-backend.onrender.com/api')
+// Sanitize base URL: default to local Express in dev (`npm run dev`) and Render in production builds
+const defaultBaseUrl = import.meta.env.DEV
+  ? 'http://localhost:5000/api'
+  : 'https://cricpass-backend.onrender.com/api';
+
+const rawBaseUrl = (import.meta.env.VITE_API_URL || defaultBaseUrl)
   .trim()
   .replace(/\/+$/, '');
 const API_BASE_URL = rawBaseUrl.endsWith('/api') ? rawBaseUrl : `${rawBaseUrl}/api`;
+
+console.log('[API Config] Initialized Axios client:', {
+  mode: import.meta.env.MODE,
+  viteApiUrl: import.meta.env.VITE_API_URL || '(not set)',
+  resolvedBaseUrl: API_BASE_URL,
+});
 
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 30000, // 30-second timeout to handle Render cold-start spins and email OTP delays
+  timeout: 30000, // 30-second timeout to handle Render cold-start spins and OTP delays
 });
 
-// Response interceptor for consistent error extraction
+// Request interceptor for full URL & payload debug logging
+api.interceptors.request.use(
+  (config) => {
+    const fullUrl = `${config.baseURL || ''}${config.url || ''}`;
+    console.log(
+      `[API Request] ${String(config.method || 'GET').toUpperCase()} ${fullUrl}`,
+      config.data !== undefined ? { payload: config.data } : ''
+    );
+    return config;
+  },
+  (error) => {
+    console.error('[API Request Error]', error);
+    return Promise.reject(error);
+  }
+);
+
+// Response interceptor for consistent error extraction and debug visibility
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    console.error('[API Response Error]', {
+      url: `${error.config?.baseURL || ''}${error.config?.url || ''}`,
+      status: error.response?.status,
+      code: error.code,
+      data: error.response?.data,
+      message: error.message,
+    });
+
     const customMessage =
       error.response?.data?.message ||
       (error.response?.data?.errors
@@ -133,16 +167,54 @@ export const loginTeamAdmin = async ({ team_id, password, phone_number }) => {
  * 11. Send 6-digit WhatsApp OTP
  */
 export const sendWhatsAppOTP = async (phone, purpose = 'Verification') => {
-  const response = await api.post('/otp/send-whatsapp-otp', { phone, purpose });
-  return response.data;
+  const payload = { phone, purpose };
+  const targetUrl = `${API_BASE_URL}/otp/send-whatsapp-otp`;
+  console.log('[OTP Dispatch] Calling POST send-whatsapp-otp:', {
+    url: targetUrl,
+    payload,
+  });
+
+  try {
+    const response = await api.post('/otp/send-whatsapp-otp', payload);
+    console.log('[OTP Dispatch] send-whatsapp-otp succeeded:', {
+      status: response.status,
+      data: response.data,
+    });
+    return response.data;
+  } catch (error) {
+    console.error('[OTP Dispatch] send-whatsapp-otp failed:', {
+      url: targetUrl,
+      message: error.message,
+    });
+    throw error;
+  }
 };
 
 /**
  * 12. Verify 6-digit WhatsApp OTP
  */
 export const verifyWhatsAppOTP = async (phone, code) => {
-  const response = await api.post('/otp/verify-whatsapp-otp', { phone, code });
-  return response.data;
+  const payload = { phone, code };
+  const targetUrl = `${API_BASE_URL}/otp/verify-whatsapp-otp`;
+  console.log('[OTP Dispatch] Calling POST verify-whatsapp-otp:', {
+    url: targetUrl,
+    payload: { phone, code: code ? '***' : code },
+  });
+
+  try {
+    const response = await api.post('/otp/verify-whatsapp-otp', payload);
+    console.log('[OTP Dispatch] verify-whatsapp-otp succeeded:', {
+      status: response.status,
+      data: response.data,
+    });
+    return response.data;
+  } catch (error) {
+    console.error('[OTP Dispatch] verify-whatsapp-otp failed:', {
+      url: targetUrl,
+      message: error.message,
+    });
+    throw error;
+  }
 };
 
 // Legacy aliases for backward compatibility
@@ -152,16 +224,24 @@ export const verifyEmailOTP = verifyWhatsAppOTP;
 /**
  * 13. Change Team Admin Password (after OTP verification)
  */
-export const changeTeamPassword = async ({ team_id, new_password }) => {
-  const response = await api.put('/teams/change-password', { team_id, new_password });
+export const changeTeamPassword = async ({ team_id, phone_number, new_password }) => {
+  const response = await api.put('/teams/change-password', { team_id, phone_number, new_password });
+  return response.data;
+};
+
+/**
+ * 13b. Lookup team(s) registered with an admin WhatsApp number
+ */
+export const lookupTeamsByPhone = async (phone_number) => {
+  const response = await api.post('/teams/lookup-by-phone', { phone_number });
   return response.data;
 };
 
 /**
  * 14. Change Team Admin Email Address (after dual OTP verification)
  */
-export const changeTeamEmail = async ({ team_id, new_email, new_password }) => {
-  const response = await api.put('/teams/change-email', { team_id, new_email, new_password });
+export const changeTeamEmail = async ({ team_id, new_email, new_phone, new_password }) => {
+  const response = await api.put('/teams/change-email', { team_id, new_email, new_phone, new_password });
   return response.data;
 };
 
@@ -170,6 +250,14 @@ export const changeTeamEmail = async ({ team_id, new_email, new_password }) => {
  */
 export const grantMutualClearance = async (clearanceData) => {
   const response = await api.post('/transfers/grant-mutual-clearance', clearanceData);
+  return response.data;
+};
+
+/**
+ * 15b. Cancel a pending transfer session and restore player status to ACTIVE
+ */
+export const cancelTransfer = async (cancelData) => {
+  const response = await api.post('/transfers/cancel', cancelData);
   return response.data;
 };
 

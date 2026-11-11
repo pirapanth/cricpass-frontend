@@ -46,8 +46,16 @@ import {
   sendWhatsAppOTP,
   verifyWhatsAppOTP,
   changeTeamPassword,
-  changeTeamEmail
+  changeTeamEmail,
+  lookupTeamsByPhone
 } from '../api';
+import {
+  handlePlus94PhoneInput,
+  handlePlus94KeyDown,
+  isValidPlus94Phone,
+  formatDisplayPhone,
+  maskDisplayPhone
+} from '../utils/phoneUtils';
 
 export default function TeamAdminPortal() {
   const [teams, setTeams] = useState([]);
@@ -75,6 +83,7 @@ export default function TeamAdminPortal() {
   const [loginCredential, setLoginCredential] = useState(''); // password or phone
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [loginError, setLoginError] = useState(null);
+  const [loginSuccess, setLoginSuccess] = useState(null);
   const [isSubmittingLogin, setIsSubmittingLogin] = useState(false);
 
   // Register Team Form State
@@ -82,7 +91,7 @@ export default function TeamAdminPortal() {
     team_name: '',
     admin_name: '',
     admin_email: '',
-    phone_number: '',
+    phone_number: '+94',
     password: '',
     image_url: ''
   });
@@ -158,6 +167,23 @@ export default function TeamAdminPortal() {
   const [emailModalError, setEmailModalError] = useState(null);
   const [emailModalSuccess, setEmailModalSuccess] = useState(null);
 
+  // Team Admin Forgot Password Modal State (Sign-In tab)
+  const [showForgotModal, setShowForgotModal] = useState(false);
+  const [forgotStep, setForgotStep] = useState(1); // 1: enter WhatsApp & send OTP, 2: verify OTP, 3: new password
+  const [forgotPhone, setForgotPhone] = useState('+94');
+  const [forgotMatchedTeams, setForgotMatchedTeams] = useState([]);
+  const [forgotSelectedTeamId, setForgotSelectedTeamId] = useState('');
+  const [forgotOtpSending, setForgotOtpSending] = useState(false);
+  const [forgotOtpCode, setForgotOtpCode] = useState('');
+  const [forgotOtpVerifying, setForgotOtpVerifying] = useState(false);
+  const [forgotNewPassword, setForgotNewPassword] = useState('');
+  const [forgotConfirmPassword, setForgotConfirmPassword] = useState('');
+  const [showForgotNewPassword, setShowForgotNewPassword] = useState(false);
+  const [showForgotConfirmPassword, setShowForgotConfirmPassword] = useState(false);
+  const [forgotUpdating, setForgotUpdating] = useState(false);
+  const [forgotError, setForgotError] = useState(null);
+  const [forgotSuccess, setForgotSuccess] = useState(null);
+
   useEffect(() => {
     fetchTeams();
   }, []);
@@ -196,6 +222,7 @@ export default function TeamAdminPortal() {
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoginError(null);
+    setLoginSuccess(null);
 
     const cleanTeamId = loginTeamId.trim();
     const cleanCred = loginCredential.trim();
@@ -242,7 +269,7 @@ export default function TeamAdminPortal() {
         throw new Error(teamRes.message || 'Invalid credentials');
       }
     } catch (err) {
-      setLoginError(err.message || 'Invalid credentials. Record not found in database.');
+      setLoginError(err.message || 'Invalid credentials. Record not found.');
     } finally {
       setIsSubmittingLogin(false);
     }
@@ -256,15 +283,168 @@ export default function TeamAdminPortal() {
     setLoginTeamId('');
     setLoginCredential('');
     setLoginError(null);
+    setLoginSuccess(null);
+  };
+
+  // -------------------------------------------------------------
+  // Forgot Password Handlers (for Sign-In Tab)
+  // -------------------------------------------------------------
+  const openForgotModal = () => {
+    setLoginError(null);
+    setLoginSuccess(null);
+
+    const typedIdentifier = loginTeamId.trim();
+    if (!typedIdentifier) {
+      setLoginError('Please enter your Team Identifier or Club Name first before clicking Forgot the password.');
+      return;
+    }
+
+    const normalized = typedIdentifier.toUpperCase();
+    const matchedTeam = teams.find(
+      (t) =>
+        String(t.team_id || '').toUpperCase() === normalized ||
+        String(t.team_name || '').toUpperCase() === normalized
+    );
+
+    if (!matchedTeam) {
+      setLoginError(`No registered club found matching "${typedIdentifier}". Please check your Team ID or Club Name.`);
+      return;
+    }
+
+    const formattedPhone = matchedTeam.phone_number ? formatDisplayPhone(matchedTeam.phone_number) : '';
+    if (!isValidPlus94Phone(formattedPhone)) {
+      setLoginError('This club does not have a valid registered Admin WhatsApp number.');
+      return;
+    }
+
+    setShowForgotModal(true);
+    setForgotStep(1);
+    setForgotPhone(formattedPhone);
+    setForgotMatchedTeams([matchedTeam]);
+    setForgotSelectedTeamId(matchedTeam.team_id);
+    setForgotOtpSending(false);
+    setForgotOtpCode('');
+    setForgotOtpVerifying(false);
+    setForgotNewPassword('');
+    setForgotConfirmPassword('');
+    setShowForgotNewPassword(false);
+    setShowForgotConfirmPassword(false);
+    setForgotUpdating(false);
+    setForgotError(null);
+    setForgotSuccess(null);
+  };
+
+  const closeForgotModal = () => {
+    setShowForgotModal(false);
+  };
+
+  const handleSendForgotOtp = async (e) => {
+    if (e) e.preventDefault();
+    setForgotError(null);
+
+    const cleanPhone = forgotPhone.trim();
+    if (!forgotSelectedTeamId || !isValidPlus94Phone(cleanPhone)) {
+      setForgotError('No valid registered Admin WhatsApp number found for this team.');
+      return;
+    }
+
+    setForgotOtpSending(true);
+    try {
+      const lookupRes = await lookupTeamsByPhone(cleanPhone);
+      const matched = lookupRes?.data || [];
+      const exactTeam = matched.find((t) => t.team_id === forgotSelectedTeamId);
+      if (!exactTeam) {
+        setForgotError(`Registered Admin WhatsApp number ${maskDisplayPhone(cleanPhone)} could not be verified for ${forgotSelectedTeamId}`);
+        return;
+      }
+
+      await sendWhatsAppOTP(cleanPhone, 'Team Admin Password Reset');
+      setForgotOtpCode('');
+      setForgotStep(2);
+    } catch (err) {
+      setForgotError(err.message || 'Failed to dispatch OTP to WhatsApp number');
+    } finally {
+      setForgotOtpSending(false);
+    }
+  };
+
+  const handleVerifyForgotOtp = async (e) => {
+    if (e) e.preventDefault();
+    setForgotError(null);
+
+    if (!forgotOtpCode.trim()) {
+      setForgotError('Please enter the 6-digit OTP received on WhatsApp');
+      return;
+    }
+
+    setForgotOtpVerifying(true);
+    try {
+      const res = await verifyWhatsAppOTP(forgotPhone.trim(), forgotOtpCode.trim());
+      if (res?.success) {
+        setForgotStep(3);
+      }
+    } catch (err) {
+      setForgotError(err.message || 'Invalid or expired OTP code');
+    } finally {
+      setForgotOtpVerifying(false);
+    }
+  };
+
+  const handleSubmitForgotPassword = async (e) => {
+    e.preventDefault();
+    setForgotError(null);
+
+    if (!forgotNewPassword.trim()) {
+      setForgotError('Please enter a new password');
+      return;
+    }
+    if (forgotNewPassword.trim().length < 6) {
+      setForgotError('Password must be at least 6 characters in length');
+      return;
+    }
+    if (forgotNewPassword !== forgotConfirmPassword) {
+      setForgotError('Passwords do not match. Please verify both fields.');
+      return;
+    }
+
+    setForgotUpdating(true);
+    try {
+      const res = await changeTeamPassword({
+        team_id: forgotSelectedTeamId || undefined,
+        phone_number: forgotPhone.trim(),
+        new_password: forgotNewPassword.trim()
+      });
+
+      const updatedTeamId = res?.data?.team_id || forgotSelectedTeamId;
+      setForgotSuccess('Password updated successfully! Redirecting to Sign In...');
+      await fetchTeams();
+
+      setTimeout(() => {
+        setShowForgotModal(false);
+        setAuthMode('SIGN_IN');
+        if (updatedTeamId) {
+          setLoginTeamId(updatedTeamId);
+        }
+        setLoginCredential('');
+        setLoginError(null);
+        setLoginSuccess('Password updated successfully! Please sign in with your new password.');
+      }, 1200);
+    } catch (err) {
+      setForgotError(err.message || 'Failed to update password');
+    } finally {
+      setForgotUpdating(false);
+    }
   };
 
   // -------------------------------------------------------------
   // Send WhatsApp OTP for Team Registration
   // -------------------------------------------------------------
   const handleSendTeamEmailOtp = async () => {
-    const phoneToVerify = newTeamData.phone_number?.trim() || newTeamData.admin_email?.trim();
-    if (!phoneToVerify) {
-      setTeamEmailOtpError('Please enter a WhatsApp phone number (with country code) first');
+    const phoneToVerify = newTeamData.phone_number?.trim();
+    if (!isValidPlus94Phone(phoneToVerify)) {
+      setTeamEmailOtpError(
+        'Please enter a valid 9-digit WhatsApp number after +94 without a leading 0 (e.g. +94771454651)'
+      );
       return;
     }
 
@@ -278,7 +458,7 @@ export default function TeamAdminPortal() {
         `Team Admin Registration Authorization (${newTeamData.team_name || 'New Team'})`
       );
       setTeamEmailOtpSent(true);
-      setTeamEmailOtpMessage(`OTP sent to your WhatsApp number (+${phoneToVerify.replace(/\D/g, '')})`);
+      setTeamEmailOtpMessage(`OTP sent to your WhatsApp number (${phoneToVerify})`);
     } catch (err) {
       setTeamEmailOtpError(err.message || 'Failed to dispatch WhatsApp verification code');
     } finally {
@@ -291,7 +471,7 @@ export default function TeamAdminPortal() {
   // -------------------------------------------------------------
   const handleCheckTeamEmailOtp = async (e) => {
     if (e) e.preventDefault();
-    const phoneToVerify = newTeamData.phone_number?.trim() || newTeamData.admin_email?.trim();
+    const phoneToVerify = newTeamData.phone_number?.trim();
 
     if (!teamEmailOtpCode.trim()) {
       setTeamEmailOtpError('Please enter the 6-digit OTP code received on WhatsApp');
@@ -347,20 +527,14 @@ export default function TeamAdminPortal() {
       setRegisterTeamError('Admin Full Name is required');
       return;
     }
-    if (!newTeamData.admin_email.trim()) {
-      setRegisterTeamError('Admin Contact Email is required');
+    if (!isValidPlus94Phone(newTeamData.phone_number)) {
+      setRegisterTeamError(
+        'WhatsApp Number must be +94 followed by 9 digits without a leading 0 (e.g. +94771454651)'
+      );
       return;
     }
     if (!teamEmailVerified) {
-      setRegisterTeamError('Email OTP verification is mandatory. Please verify your email before registering.');
-      return;
-    }
-    if (!newTeamData.phone_number.trim()) {
-      setRegisterTeamError('Admin Contact Phone is required');
-      return;
-    }
-    if (newTeamData.phone_number.trim().length !== 10) {
-      setRegisterTeamError('Admin Contact Phone must be exactly 10 digits (e.g. 0771234567)');
+      setRegisterTeamError('WhatsApp OTP verification is mandatory. Please verify your WhatsApp number before registering.');
       return;
     }
     if (!newTeamData.password.trim()) {
@@ -379,11 +553,16 @@ export default function TeamAdminPortal() {
     setRegisterTeamLoading(true);
 
     try {
+      const formattedPhone = newTeamData.phone_number.trim();
+      const derivedEmail =
+        newTeamData.admin_email?.trim().toLowerCase() ||
+        `${formattedPhone.replace(/\D/g, '')}@cricpass.lk`;
+
       const payload = {
         team_name: newTeamData.team_name.trim(),
         admin_name: newTeamData.admin_name.trim(),
-        admin_email: newTeamData.admin_email.trim().toLowerCase(),
-        phone_number: newTeamData.phone_number.trim(),
+        admin_email: derivedEmail,
+        phone_number: formattedPhone,
         password: newTeamData.password.trim(),
         image_url: newTeamData.image_url || undefined
       };
@@ -405,7 +584,7 @@ export default function TeamAdminPortal() {
           team_name: '',
           admin_name: '',
           admin_email: '',
-          phone_number: '',
+          phone_number: '+94',
           password: '',
           image_url: ''
         });
@@ -466,7 +645,7 @@ export default function TeamAdminPortal() {
   const openPhoneModal = () => {
     setShowPhoneModal(true);
     setPhoneStep(1);
-    setNewPhoneNumber('');
+    setNewPhoneNumber('+94');
     setOldPhoneOtp('');
     setNewPhoneOtp('');
     setDevOldOtp(null);
@@ -482,15 +661,15 @@ export default function TeamAdminPortal() {
   const handleRequestOldPhoneOtp = async (e) => {
     e.preventDefault();
     setModalError(null);
-    if (!newPhoneNumber.trim()) {
-      setModalError('Please enter the new phone number');
+    if (!newPhoneNumber.trim() || newPhoneNumber.trim() === '+94') {
+      setModalError('Please enter the new WhatsApp phone number');
       return;
     }
-    if (newPhoneNumber.trim().length !== 10) {
-      setModalError('New phone number must be exactly 10 digits (e.g. 0771234567)');
+    if (!isValidPlus94Phone(newPhoneNumber.trim())) {
+      setModalError('Phone number must be +94 followed by 9 digits without a leading 0 (e.g. +94771454651)');
       return;
     }
-    if (newPhoneNumber.trim() === authenticatedTeam.phone_number) {
+    if (newPhoneNumber.trim() === formatDisplayPhone(authenticatedTeam.phone_number)) {
       setModalError('New phone number cannot be identical to current phone number');
       return;
     }
@@ -556,7 +735,7 @@ export default function TeamAdminPortal() {
       });
       if (res?.data) {
         setAuthenticatedTeam(res.data);
-        setModalSuccess('Phone number successfully updated in database!');
+        setModalSuccess('Phone number successfully updated!');
         setTimeout(() => {
           closePhoneModal();
           fetchTeams();
@@ -653,7 +832,7 @@ export default function TeamAdminPortal() {
         team_id: authenticatedTeam.team_id,
         new_password: newPassword.trim()
       });
-      setPwdModalSuccess('Password updated successfully in database!');
+      setPwdModalSuccess('Password updated successfully!');
       setTimeout(() => {
         closePasswordModal();
       }, 1800);
@@ -675,7 +854,7 @@ export default function TeamAdminPortal() {
     setCurrEmailOtpCode('');
     setCurrEmailOtpVerifying(false);
     setCurrEmailVerified(false);
-    setNewAdminEmail('');
+    setNewAdminEmail('+94');
     setNewEmailOtpSent(false);
     setNewEmailOtpSending(false);
     setNewEmailOtpCode('');
@@ -694,17 +873,17 @@ export default function TeamAdminPortal() {
     setShowEmailModal(false);
   };
 
-  // Step 1: Send OTP to Current Email
+  // Step 1: Send OTP to Current WhatsApp
   const handleSendCurrEmailOtp = async () => {
-    if (!authenticatedTeam?.admin_email) {
+    const currPhone = formatDisplayPhone(authenticatedTeam?.phone_number) || authenticatedTeam?.admin_email;
+    if (!currPhone) {
       setEmailModalError('No current admin WhatsApp number found');
       return;
     }
-    const currPhone = authenticatedTeam.phone_number || authenticatedTeam.admin_email;
     setCurrEmailOtpSending(true);
     setEmailModalError(null);
     try {
-      await sendWhatsAppOTP(currPhone, 'Authorization to Change Admin Contact');
+      await sendWhatsAppOTP(currPhone, 'Authorization to Change Admin WhatsApp Number');
       setCurrEmailOtpSent(true);
     } catch (err) {
       setEmailModalError(err.message || 'Failed to dispatch OTP to current WhatsApp');
@@ -713,14 +892,14 @@ export default function TeamAdminPortal() {
     }
   };
 
-  // Step 1: Verify OTP for Current Contact
+  // Step 1: Verify OTP for Current WhatsApp
   const handleVerifyCurrEmailOtp = async (e) => {
     if (e) e.preventDefault();
     if (!currEmailOtpCode.trim()) {
       setEmailModalError('Please enter the OTP code received on WhatsApp');
       return;
     }
-    const currPhone = authenticatedTeam.phone_number || authenticatedTeam.admin_email;
+    const currPhone = formatDisplayPhone(authenticatedTeam?.phone_number) || authenticatedTeam?.admin_email;
     setCurrEmailOtpVerifying(true);
     setEmailModalError(null);
     try {
@@ -736,18 +915,18 @@ export default function TeamAdminPortal() {
     }
   };
 
-  // Step 2: Send OTP to New Contact
+  // Step 2: Send OTP to New WhatsApp Number
   const handleSendNewEmailOtp = async () => {
     const contactToVerify = newAdminEmail.trim();
-    if (!contactToVerify) {
-      setEmailModalError('Please enter your new WhatsApp number or contact');
+    if (!isValidPlus94Phone(contactToVerify)) {
+      setEmailModalError('WhatsApp number must be +94 followed by 9 digits without a leading 0 (e.g. +94771454651)');
       return;
     }
 
     setNewEmailOtpSending(true);
     setEmailModalError(null);
     try {
-      await sendWhatsAppOTP(contactToVerify, 'New Admin Contact Verification');
+      await sendWhatsAppOTP(contactToVerify, 'New Admin WhatsApp Verification');
       setNewEmailOtpSent(true);
     } catch (err) {
       setEmailModalError(err.message || 'Failed to dispatch verification code to new WhatsApp');
@@ -756,7 +935,7 @@ export default function TeamAdminPortal() {
     }
   };
 
-  // Step 2: Verify OTP for New Contact
+  // Step 2: Verify OTP for New WhatsApp Number
   const handleVerifyNewEmailOtp = async (e) => {
     if (e) e.preventDefault();
     if (!newEmailOtpCode.trim()) {
@@ -797,9 +976,11 @@ export default function TeamAdminPortal() {
 
     setEmailUpdating(true);
     try {
+      const cleanNewPhone = newAdminEmail.trim();
       const res = await changeTeamEmail({
         team_id: authenticatedTeam.team_id,
-        new_email: newAdminEmail.trim().toLowerCase(),
+        new_phone: cleanNewPhone,
+        new_email: cleanNewPhone,
         new_password: emailNewPassword.trim()
       });
 
@@ -808,19 +989,19 @@ export default function TeamAdminPortal() {
       } else {
         setAuthenticatedTeam((prev) => ({
           ...prev,
-          admin_email: newAdminEmail.trim().toLowerCase()
+          phone_number: cleanNewPhone
         }));
       }
 
       setEmailModalSuccess(
-        'Email successfully changed! Official credential confirmation dispatched to the new email.'
+        'WhatsApp number updated! Official credential confirmation dispatched to the new WhatsApp number.'
       );
       setTimeout(() => {
         closeEmailModal();
         fetchTeams();
       }, 2500);
     } catch (err) {
-      setEmailModalError(err.message || 'Failed to update email address');
+      setEmailModalError(err.message || 'Failed to update WhatsApp contact');
     } finally {
       setEmailUpdating(false);
     }
@@ -882,6 +1063,13 @@ export default function TeamAdminPortal() {
               {/* ------------------------------------------------------ */}
               {authMode === 'SIGN_IN' && (
                 <div className="space-y-6 animate-fadeIn">
+                  {loginSuccess && (
+                    <div className="p-3.5 rounded-xl bg-emerald-950/60 border border-emerald-800/60 text-emerald-300 text-xs flex items-center gap-2">
+                      <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span>{loginSuccess}</span>
+                    </div>
+                  )}
+
                   {loginError && (
                     <div className="p-3.5 rounded-xl bg-rose-950/60 border border-rose-800/60 text-rose-300 text-xs flex items-center gap-2">
                       <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
@@ -908,9 +1096,18 @@ export default function TeamAdminPortal() {
                     </div>
 
                     <div className="space-y-2">
-                      <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
-                        Admin Password
-                      </label>
+                      <div className="flex items-center justify-between">
+                        <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
+                          Admin Password
+                        </label>
+                        <button
+                          type="button"
+                          onClick={openForgotModal}
+                          className="text-xs font-semibold text-cyan-400 hover:text-cyan-300 underline underline-offset-2 transition-colors cursor-pointer"
+                        >
+                          Forgot the password?
+                        </button>
+                      </div>
                       <div className="relative">
                         <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
                           <Lock className="w-4 h-4" />
@@ -1015,13 +1212,15 @@ export default function TeamAdminPortal() {
                       </label>
                       <input
                         type="tel"
+                        maxLength={12}
                         value={newTeamData.phone_number}
+                        onKeyDown={handlePlus94KeyDown}
                         onChange={(e) => {
-                          const val = e.target.value;
-                          setNewTeamData((prev) => ({ 
-                            ...prev, 
-                            phone_number: val,
-                            admin_email: prev.admin_email || `${val.replace(/\D/g, '')}@cricpass.lk` 
+                          const formatted = handlePlus94PhoneInput(e.target.value);
+                          setNewTeamData((prev) => ({
+                            ...prev,
+                            phone_number: formatted,
+                            admin_email: `${formatted.replace(/\D/g, '')}@cricpass.lk`
                           }));
                           // Reset OTP verification if phone is changed
                           setTeamEmailVerified(false);
@@ -1030,10 +1229,13 @@ export default function TeamAdminPortal() {
                           setTeamEmailOtpMessage(null);
                           setTeamEmailOtpError(null);
                         }}
-                        placeholder="e.g. 94771234567 or 0771234567"
-                        className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm"
+                        placeholder="+94771454651"
+                        className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm"
                         required
                       />
+                      <p className="text-[11px] text-slate-400">
+                        Always starts with <span className="text-emerald-400 font-mono font-bold">+94</span> followed by 9 digits (e.g. <span className="font-mono text-slate-300">+94771454651</span>). Leading 0 is removed automatically.
+                      </p>
 
                       {/* WhatsApp OTP Verification Section */}
                       {teamEmailOtpMessage && (
@@ -1056,7 +1258,7 @@ export default function TeamAdminPortal() {
                             <button
                               type="button"
                               onClick={handleSendTeamEmailOtp}
-                              disabled={sendingTeamEmailOtp || !newTeamData.phone_number.trim()}
+                              disabled={sendingTeamEmailOtp || newTeamData.phone_number.length <= 3}
                               className="w-full flex items-center justify-center gap-2 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer disabled:opacity-50"
                             >
                               {sendingTeamEmailOtp ? (
@@ -1123,25 +1325,6 @@ export default function TeamAdminPortal() {
                           </span>
                         </div>
                       )}
-                    </div>
-
-                    {/* Admin Contact Phone */}
-                    <div className="space-y-1.5">
-                      <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
-                        Admin Contact Phone Number <span className="text-emerald-400">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        maxLength={10}
-                        value={newTeamData.phone_number}
-                        onChange={(e) => {
-                          const digits = e.target.value.replace(/\D/g, '').slice(0, 10);
-                          setNewTeamData((prev) => ({ ...prev, phone_number: digits }));
-                        }}
-                        placeholder="e.g. 0771234567 (10 digits)"
-                        className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm"
-                        required
-                      />
                     </div>
 
                     {/* Admin Password */}
@@ -1257,12 +1440,12 @@ export default function TeamAdminPortal() {
                       {registerTeamLoading ? (
                         <span className="flex items-center justify-center gap-2">
                           <RefreshCw className="w-4 h-4 animate-spin" />
-                          <span>Registering Club in Database...</span>
+                          <span>Registering Club...</span>
                         </span>
                       ) : !teamEmailVerified ? (
                         <span className="flex items-center justify-center gap-2">
                           <ShieldCheck className="w-4 h-4" />
-                          <span>Verify Admin Email OTP to Enable Registration</span>
+                          <span>Verify Admin OTP to Enable Registration</span>
                         </span>
                       ) : (
                         <span>Create & Register Club Team</span>
@@ -1425,7 +1608,7 @@ export default function TeamAdminPortal() {
               className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span>+ Register Team</span>
+              <span>Register Team</span>
             </button>
           </div>
 
@@ -1527,8 +1710,7 @@ export default function TeamAdminPortal() {
                             </div>
                             <p className="text-xs text-slate-400 mt-0.5">
                               Admin: <strong className="text-slate-200">{selectedTeamObj?.admin_name}</strong> |{' '}
-                              Email: <span className="font-mono text-emerald-400">{selectedTeamObj?.admin_email}</span> |{' '}
-                              Phone: <span className="font-mono text-slate-300">{selectedTeamObj?.phone_number}</span>
+                              WhatsApp: <span className="font-mono text-emerald-400">{formatDisplayPhone(selectedTeamObj?.phone_number)}</span>
                             </p>
                           </div>
                         </div>
@@ -1575,7 +1757,7 @@ export default function TeamAdminPortal() {
                               <tr key={player._id} className="hover:bg-slate-750/50 transition-colors">
                                 <td className="py-3 px-4 font-bold text-white">{player.full_name}</td>
                                 <td className="py-3 px-4 font-mono font-semibold text-emerald-400">{player.nic_number}</td>
-                                <td className="py-3 px-4 font-mono text-slate-300">{player.phone_number}</td>
+                                <td className="py-3 px-4 font-mono text-slate-300">{formatDisplayPhone(player.phone_number)}</td>
                                 <td className="py-3 px-4">
                                   {player.status === 'ACTIVE' && (
                                     <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[11px] font-bold">
@@ -1642,7 +1824,7 @@ export default function TeamAdminPortal() {
                             <tr>
                               <th className="py-3.5 px-4">Team ID</th>
                               <th className="py-3.5 px-4">Team Name</th>
-                              <th className="py-3.5 px-4">Admin Name & Email</th>
+                              <th className="py-3.5 px-4">Admin Name</th>
                               <th className="py-3.5 px-4">Admin Phone</th>
                               <th className="py-3.5 px-4 text-center">Players</th>
                               <th className="py-3.5 px-4 text-right">Actions</th>
@@ -1667,11 +1849,8 @@ export default function TeamAdminPortal() {
                                 </td>
                                 <td className="py-3.5 px-4 text-slate-300">
                                   <div className="font-semibold text-white">{team.admin_name}</div>
-                                  <div className="text-[11px] text-emerald-400 font-mono">
-                                    {team.admin_email || 'No email registered'}
-                                  </div>
                                 </td>
-                                <td className="py-3.5 px-4 font-mono text-slate-300">{team.phone_number}</td>
+                                <td className="py-3.5 px-4 font-mono text-emerald-400">{formatDisplayPhone(team.phone_number)}</td>
                                 <td className="py-3.5 px-4 text-center">
                                   <button
                                     type="button"
@@ -1820,7 +1999,7 @@ export default function TeamAdminPortal() {
                             <tr key={p._id} className="hover:bg-slate-750/50 transition-colors">
                               <td className="py-3.5 px-4 font-bold text-white">{p.full_name}</td>
                               <td className="py-3.5 px-4 font-mono font-semibold text-emerald-400">{p.nic_number}</td>
-                              <td className="py-3.5 px-4 font-mono text-slate-300">{p.phone_number}</td>
+                              <td className="py-3.5 px-4 font-mono text-slate-300">{formatDisplayPhone(p.phone_number)}</td>
                               <td className="py-3.5 px-4 text-slate-200">{p.team_name}</td>
                               <td className="py-3.5 px-4">
                                 {p.status === 'ACTIVE' && (
@@ -1949,15 +2128,8 @@ export default function TeamAdminPortal() {
                   </div>
                   <div className="flex flex-wrap items-center gap-4 text-xs text-slate-400 mt-1">
                     <span>Admin: <strong className="text-slate-200">{authenticatedTeam.admin_name}</strong></span>
-                    <span>•</span>
                     <span className="flex items-center gap-1">
-                      <Mail className="w-3.5 h-3.5 text-cyan-400" />
-                      <strong className="text-slate-200 font-mono">{authenticatedTeam.admin_email}</strong>
-                    </span>
-                    <span>•</span>
-                    <span className="flex items-center gap-1">
-                      <Phone className="w-3.5 h-3.5 text-cyan-400" />
-                      <strong className="text-slate-200 font-mono">{authenticatedTeam.phone_number}</strong>
+                      WhatsApp No: <strong className="text-emerald-300 font-mono">{formatDisplayPhone(authenticatedTeam.phone_number)}</strong>
                     </span>
                   </div>
                 </div>
@@ -1969,7 +2141,7 @@ export default function TeamAdminPortal() {
                   type="button"
                   onClick={openPasswordModal}
                   className="flex items-center gap-1.5 px-3.5 py-2.5 bg-slate-700/80 hover:bg-slate-700 border border-slate-600 text-slate-200 rounded-xl text-xs font-bold transition-all shadow cursor-pointer"
-                  title="Change your team admin login password with email OTP verification"
+                  title="Change your team admin login password with WhatsApp OTP verification"
                 >
                   <KeyRound className="w-4 h-4 text-cyan-400" />
                   <span>Change Password</span>
@@ -1979,19 +2151,10 @@ export default function TeamAdminPortal() {
                   type="button"
                   onClick={openEmailModal}
                   className="flex items-center gap-1.5 px-3.5 py-2.5 bg-teal-600/20 hover:bg-teal-600/30 border border-teal-500/40 text-teal-300 rounded-xl text-xs font-bold transition-all shadow cursor-pointer"
-                  title="Update registered email address with 2-step email verification"
+                  title="Update registered WhatsApp number with 2-step WhatsApp OTP verification"
                 >
-                  <Mail className="w-4 h-4 text-teal-400" />
-                  <span>Change Email</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={openPhoneModal}
-                  className="flex items-center gap-1.5 px-3.5 py-2.5 bg-cyan-600/20 hover:bg-cyan-600/30 border border-cyan-500/40 text-cyan-300 rounded-xl text-xs font-bold transition-all shadow cursor-pointer"
-                >
-                  <Edit3 className="w-4 h-4 text-cyan-400" />
-                  <span>Update Phone</span>
+                  <Phone className="w-4 h-4 text-teal-400" />
+                  <span>Change WhatsApp</span>
                 </button>
 
                 <button
@@ -2014,7 +2177,7 @@ export default function TeamAdminPortal() {
                 <h3 className="font-bold text-white text-base">Club Player Roster</h3>
               </div>
               <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-900 border border-slate-700 text-slate-300 font-mono">
-                {teamRoster.length} Registered Players
+                No of Players : {teamRoster.length} 
               </span>
             </div>
 
@@ -2110,7 +2273,7 @@ export default function TeamAdminPortal() {
               <form onSubmit={handleRequestOldPhoneOtp} className="space-y-4">
                 <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-700 text-xs space-y-1">
                   <span className="text-slate-400 block font-medium">Current Registered Contact:</span>
-                  <span className="text-white font-mono font-bold text-sm">{authenticatedTeam?.phone_number}</span>
+                  <span className="text-white font-mono font-bold text-sm">{formatDisplayPhone(authenticatedTeam?.phone_number)}</span>
                 </div>
 
                 <div className="space-y-2">
@@ -2118,11 +2281,12 @@ export default function TeamAdminPortal() {
                     Enter New Contact Phone Number
                   </label>
                   <input
-                    type="text"
-                    maxLength={10}
+                    type="tel"
+                    maxLength={12}
                     value={newPhoneNumber}
-                    onChange={(e) => setNewPhoneNumber(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                    placeholder="e.g. 0771234567 (10 digits)"
+                    onKeyDown={handlePlus94KeyDown}
+                    onChange={(e) => setNewPhoneNumber(handlePlus94PhoneInput(e.target.value))}
+                    placeholder="+94771454651"
                     className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-white font-mono focus:outline-none focus:ring-2 focus:ring-cyan-500 text-sm"
                     required
                   />
@@ -2221,7 +2385,7 @@ export default function TeamAdminPortal() {
                   disabled={modalLoading}
                   className="w-full py-3 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold rounded-xl text-sm transition-colors cursor-pointer disabled:opacity-50"
                 >
-                  {modalLoading ? 'Updating Database...' : 'Verify & Commit Phone Number Change'}
+                  {modalLoading ? 'Updating...' : 'Verify & Commit Phone Number Change'}
                 </button>
               </form>
             )}
@@ -2328,7 +2492,7 @@ export default function TeamAdminPortal() {
                 <div className="p-3 rounded-xl bg-slate-900 border border-slate-700 text-xs space-y-1">
                   <span className="text-slate-400 block font-medium">Verification Code Recipient:</span>
                   <span className="text-emerald-400 font-mono font-bold text-sm">
-                    {authenticatedTeam?.phone_number || authenticatedTeam?.admin_email}
+                    {formatDisplayPhone(authenticatedTeam?.phone_number) || authenticatedTeam?.admin_email}
                   </span>
                   <p className="text-[11px] text-slate-400 mt-1">
                     An OTP must be verified on your registered WhatsApp number before setting a new password.
@@ -2397,7 +2561,7 @@ export default function TeamAdminPortal() {
               <form onSubmit={handleSubmitNewPassword} className="space-y-4">
                 <div className="p-2.5 rounded-lg bg-emerald-950/70 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-2">
                   <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span>Email OTP Verified! Enter your new password below.</span>
+                  <span>Whatsapp OTP Verified! Enter your new password below.</span>
                 </div>
 
                 {/* New Password */}
@@ -2466,7 +2630,7 @@ export default function TeamAdminPortal() {
                   {pwdUpdating ? (
                     <span className="flex items-center justify-center gap-2">
                       <RefreshCw className="w-4 h-4 animate-spin" />
-                      <span>Updating Database...</span>
+                      <span>Updating...</span>
                     </span>
                   ) : (
                     <span>Commit New Password</span>
@@ -2487,7 +2651,7 @@ export default function TeamAdminPortal() {
             <div className="flex items-center justify-between pb-3 border-b border-slate-700">
               <div className="flex items-center gap-2">
                 <Mail className="w-5 h-5 text-teal-400" />
-                <h3 className="font-bold text-white text-base">Change Admin Email Address</h3>
+                <h3 className="font-bold text-white text-base">Change Admin Whatsapp No</h3>
               </div>
               <button
                 type="button"
@@ -2502,12 +2666,12 @@ export default function TeamAdminPortal() {
             <div className="flex items-center justify-between text-[11px] font-semibold px-1">
               <div className={`flex items-center gap-1 ${emailChangeStep >= 1 ? 'text-teal-400' : 'text-slate-500'}`}>
                 <span className="w-5 h-5 rounded-full border border-current flex items-center justify-center text-[10px]">1</span>
-                <span>Current Email OTP</span>
+                <span>Current Whatsapp No</span>
               </div>
               <div className={`h-0.5 flex-1 mx-2 ${emailChangeStep >= 2 ? 'bg-teal-500' : 'bg-slate-700'}`}></div>
               <div className={`flex items-center gap-1 ${emailChangeStep >= 2 ? 'text-teal-400' : 'text-slate-500'}`}>
                 <span className="w-5 h-5 rounded-full border border-current flex items-center justify-center text-[10px]">2</span>
-                <span>New Email OTP</span>
+                <span>New Whatsapp No</span>
               </div>
               <div className={`h-0.5 flex-1 mx-2 ${emailChangeStep >= 3 ? 'bg-teal-500' : 'bg-slate-700'}`}></div>
               <div className={`flex items-center gap-1 ${emailChangeStep >= 3 ? 'text-teal-400' : 'text-slate-500'}`}>
@@ -2536,7 +2700,7 @@ export default function TeamAdminPortal() {
                 <div className="p-3 rounded-xl bg-slate-900 border border-slate-700 text-xs space-y-1">
                   <span className="text-slate-400 block font-medium">Current Registered WhatsApp / Contact:</span>
                   <span className="text-white font-mono font-bold text-sm">
-                    {authenticatedTeam?.phone_number || authenticatedTeam?.admin_email}
+                    {formatDisplayPhone(authenticatedTeam?.phone_number) || authenticatedTeam?.admin_email}
                   </span>
                   <p className="text-[11px] text-slate-400 mt-1">
                     Step 1 requires verifying authorization on your current registered WhatsApp number.
@@ -2611,23 +2775,28 @@ export default function TeamAdminPortal() {
                   </label>
                   <input
                     type="tel"
+                    maxLength={12}
                     value={newAdminEmail}
+                    onKeyDown={handlePlus94KeyDown}
                     onChange={(e) => {
-                      setNewAdminEmail(e.target.value);
+                      setNewAdminEmail(handlePlus94PhoneInput(e.target.value));
                       setNewEmailOtpSent(false);
                       setNewEmailOtpCode('');
                     }}
-                    placeholder="e.g. 94771234567 or 0771234567"
-                    className="w-full px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    placeholder="+94771454651"
+                    className="w-full px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white font-mono text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                     required
                   />
+                  <p className="text-[11px] text-slate-500">
+                    Fixed +94 prefix • Enter 9 digits (leading 0 is automatically removed)
+                  </p>
                 </div>
 
                 {!newEmailOtpSent ? (
                   <button
                     type="button"
                     onClick={handleSendNewEmailOtp}
-                    disabled={newEmailOtpSending || !newAdminEmail.trim()}
+                    disabled={newEmailOtpSending || !isValidPlus94Phone(newAdminEmail)}
                     className="w-full flex items-center justify-center gap-2 py-3 bg-teal-600 hover:bg-teal-500 text-white font-bold rounded-xl text-xs sm:text-sm transition-colors cursor-pointer disabled:opacity-50"
                   >
                     {newEmailOtpSending ? (
@@ -2688,10 +2857,10 @@ export default function TeamAdminPortal() {
                 <div className="p-3 rounded-xl bg-slate-900 border border-slate-700 text-xs space-y-1">
                   <div className="flex items-center gap-1.5 text-emerald-400 font-bold">
                     <ShieldCheck className="w-4 h-4" />
-                    <span>New Email Verified: {newAdminEmail}</span>
+                    <span>New WhatsApp Verified: {newAdminEmail}</span>
                   </div>
                   <p className="text-[11px] text-slate-400">
-                    Now create and confirm a password for your updated credentials. An official confirmation email will be dispatched to this new address.
+                    Now create and confirm a password for your updated credentials. Official confirmation details will be dispatched to this WhatsApp number.
                   </p>
                 </div>
 
@@ -2765,6 +2934,219 @@ export default function TeamAdminPortal() {
                     </span>
                   ) : (
                     <span>Confirm & Update Email Address</span>
+                  )}
+                </button>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* MODAL 5: FORGOT ADMIN PASSWORD MODAL (FROM SIGN-IN TAB)        */}
+      {/* ============================================================== */}
+      {showForgotModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-md p-6 sm:p-7 space-y-5 shadow-2xl relative">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-700">
+              <div className="flex items-center gap-2">
+                <KeyRound className="w-5 h-5 text-cyan-400" />
+                <div>
+                  <h3 className="font-bold text-white text-base">Reset Admin Password</h3>
+                  <p className="text-[11px] text-slate-400">Step {forgotStep} of 3 • WhatsApp OTP Recovery</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={closeForgotModal}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {forgotError && (
+              <div className="p-3 rounded-xl bg-rose-950/60 border border-rose-800/60 text-rose-300 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>{forgotError}</span>
+              </div>
+            )}
+
+            {forgotSuccess && (
+              <div className="p-3 rounded-xl bg-emerald-950/60 border border-emerald-800/60 text-emerald-300 text-xs flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>{forgotSuccess}</span>
+              </div>
+            )}
+
+            {/* STEP 1: View Read-Only Masked WhatsApp & Send OTP */}
+            {forgotStep === 1 && (
+              <form onSubmit={handleSendForgotOtp} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
+                    Registered Admin WhatsApp Number
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+                      <Phone className="w-4 h-4" />
+                    </div>
+                    <input
+                      type="text"
+                      value={forgotPhone ? maskDisplayPhone(forgotPhone) : ''}
+                      readOnly
+                      className="w-full pl-10 pr-4 py-2.5 bg-slate-900/70 border border-slate-700 rounded-xl text-emerald-300 font-mono text-sm cursor-not-allowed focus:outline-none select-none"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={forgotOtpSending || !forgotSelectedTeamId || !isValidPlus94Phone(forgotPhone)}
+                  className="w-full flex items-center justify-center gap-2 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs sm:text-sm transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  {forgotOtpSending ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Sending OTP to WhatsApp...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4" />
+                      <span>Send OTP to WhatsApp</span>
+                    </>
+                  )}
+                </button>
+              </form>
+            )}
+
+            {/* STEP 2: Enter & Verify WhatsApp OTP */}
+            {forgotStep === 2 && (
+              <form onSubmit={handleVerifyForgotOtp} className="space-y-4">
+                <div className="p-3 rounded-xl bg-slate-900 border border-slate-700 text-xs space-y-1">
+                  <span className="text-slate-400 block font-medium">OTP sent to WhatsApp Number:</span>
+                  <span className="text-emerald-400 font-mono font-bold text-sm">{maskDisplayPhone(forgotPhone)}</span>
+                  {forgotMatchedTeams[0] && (
+                    <span className="block text-[11px] text-slate-400">
+                      Club: <strong className="text-slate-200">{forgotMatchedTeams[0].team_name} ({forgotMatchedTeams[0].team_id})</strong>
+                    </span>
+                  )}
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
+                    Enter 6-Digit WhatsApp OTP
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={6}
+                    value={forgotOtpCode}
+                    onChange={(e) => setForgotOtpCode(e.target.value.trim())}
+                    placeholder="000000"
+                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-center text-xl font-mono tracking-widest text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    required
+                  />
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    type="submit"
+                    disabled={forgotOtpVerifying || !forgotOtpCode.trim()}
+                    className="flex-1 py-2.5 bg-gradient-to-r from-cyan-600 to-teal-600 hover:from-cyan-500 hover:to-teal-500 text-white font-bold rounded-xl text-xs transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    {forgotOtpVerifying ? 'Verifying OTP...' : 'Verify OTP'}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleSendForgotOtp}
+                    disabled={forgotOtpSending}
+                    className="px-3 py-2.5 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-xl text-xs font-semibold cursor-pointer disabled:opacity-50"
+                  >
+                    Resend
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* STEP 3: Enter & Confirm New Password */}
+            {forgotStep === 3 && (
+              <form onSubmit={handleSubmitForgotPassword} className="space-y-4">
+                <div className="p-2.5 rounded-lg bg-emerald-950/70 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>
+                    WhatsApp OTP Verified! Enter a new password
+                    {forgotSelectedTeamId ? ` for ${forgotSelectedTeamId}` : ''}.
+                  </span>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
+                    New Admin Password
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+                      <Lock className="w-4 h-4" />
+                    </div>
+                    <input
+                      type={showForgotNewPassword ? 'text' : 'password'}
+                      value={forgotNewPassword}
+                      onChange={(e) => setForgotNewPassword(e.target.value)}
+                      placeholder="Minimum 6 characters"
+                      className="w-full pl-10 pr-10 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white font-mono focus:outline-none focus:ring-2 focus:ring-cyan-500 text-sm"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowForgotNewPassword(!showForgotNewPassword)}
+                      className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-200 cursor-pointer"
+                      tabIndex={-1}
+                      title={showForgotNewPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showForgotNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
+                    Confirm New Admin Password
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+                      <Lock className="w-4 h-4" />
+                    </div>
+                    <input
+                      type={showForgotConfirmPassword ? 'text' : 'password'}
+                      value={forgotConfirmPassword}
+                      onChange={(e) => setForgotConfirmPassword(e.target.value)}
+                      placeholder="Re-enter new password"
+                      className="w-full pl-10 pr-10 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white font-mono focus:outline-none focus:ring-2 focus:ring-cyan-500 text-sm"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowForgotConfirmPassword(!showForgotConfirmPassword)}
+                      className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-200 cursor-pointer"
+                      tabIndex={-1}
+                      title={showForgotConfirmPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showForgotConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={forgotUpdating}
+                  className="w-full py-3 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold rounded-xl text-xs sm:text-sm transition-all shadow-md cursor-pointer disabled:opacity-50"
+                >
+                  {forgotUpdating ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Updating Password...</span>
+                    </span>
+                  ) : (
+                    <span>Update Password</span>
                   )}
                 </button>
               </form>
