@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   UserPlus,
   CheckCircle,
@@ -6,7 +6,6 @@ import {
   RefreshCw,
   User,
   Phone,
-  Building,
   Upload,
   Trash2,
   FileCheck,
@@ -16,7 +15,10 @@ import {
   Send,
   MessageSquare
 } from 'lucide-react';
-import { getTeams, registerPlayer, sendWhatsAppOTP, verifyWhatsAppOTP } from '../api';
+import { registerPlayer, sendWhatsAppOTP, verifyWhatsAppOTP } from '../api';
+import useTeams from '../hooks/useTeams';
+import TeamSelectDropdown from './TeamSelectDropdown';
+import LoadingPopup from './LoadingPopup';
 import {
   handlePlus94PhoneInput,
   handlePlus94KeyDown,
@@ -26,7 +28,16 @@ import {
 } from '../utils/phoneUtils';
 
 export default function PlayerRegister({ onPlayerRegistered }) {
-  const [teams, setTeams] = useState([]);
+  const {
+    teams,
+    loadingTeams,
+    teamsError,
+    loadingMessage,
+    attempt,
+    reloadTeams,
+  } = useTeams();
+  const [teamsPopupDismissed, setTeamsPopupDismissed] = useState(false);
+
   const [formData, setFormData] = useState({
     full_name: '',
     nic_number: '',
@@ -53,22 +64,8 @@ export default function PlayerRegister({ onPlayerRegistered }) {
   const [error, setError] = useState(null);
   const [successData, setSuccessData] = useState(null);
 
-  useEffect(() => {
-    loadTeams();
-  }, []);
-
-  const loadTeams = async () => {
-    try {
-      const res = await getTeams();
-      if (res?.data) {
-        setTeams(res.data);
-      }
-    } catch (err) {
-      console.error('Failed to load teams:', err);
-    }
-  };
-
-  const selectedTeam = teams.find((t) => t._id === formData.current_team_id);
+  const safeTeams = Array.isArray(teams) ? teams : [];
+  const selectedTeam = safeTeams.find((t) => t._id === formData.current_team_id);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -268,6 +265,20 @@ export default function PlayerRegister({ onPlayerRegistered }) {
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-8 space-y-8">
+      {/* Loading Popup until teams finish loading (handles Render cold starts) */}
+      <LoadingPopup
+        isOpen={loadingTeams || (!teamsPopupDismissed && Boolean(teamsError))}
+        title="Loading Teams..."
+        message={loadingMessage}
+        badge={attempt > 1 ? `Attempt ${attempt} of 4` : null}
+        error={teamsError}
+        onRetry={() => {
+          setTeamsPopupDismissed(false);
+          reloadTeams();
+        }}
+        onDismiss={() => setTeamsPopupDismissed(true)}
+      />
+
       {/* Title */}
       <div className="text-center space-y-2">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold tracking-wide uppercase">
@@ -414,27 +425,39 @@ export default function PlayerRegister({ onPlayerRegistered }) {
 
             {/* Team Selection */}
             <div className="sm:col-span-2 space-y-2">
-              <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
-                Select Club / Team Assignment
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
-                  <Building className="w-4 h-4" />
-                </div>
-                <select
-                  name="current_team_id"
-                  value={formData.current_team_id}
-                  onChange={handleChange}
-                  className="w-full pl-10 pr-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm"
-                >
-                  <option value="">-- No Team (Register as Free Agent) --</option>
-                  {teams.map((t) => (
-                    <option key={t._id} value={t._id}>
-                      {t.team_name} ({t.team_id})
-                    </option>
-                  ))}
-                </select>
+              <div className="flex items-center justify-between gap-2">
+                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
+                  Select Club / Team Assignment
+                </label>
+                {teamsError && !loadingTeams && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTeamsPopupDismissed(false);
+                      reloadTeams();
+                    }}
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-400 hover:text-emerald-300 cursor-pointer"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                    <span>Retry Load</span>
+                  </button>
+                )}
               </div>
+              <TeamSelectDropdown
+                teams={safeTeams}
+                value={formData.current_team_id}
+                onChange={(selectedId) =>
+                  handleChange({
+                    target: { name: 'current_team_id', value: selectedId }
+                  })
+                }
+                placeholder="-- Select Club / Team --"
+                emptyOptionLabel="-- No Team (Register as Free Agent) --"
+                loading={loadingTeams}
+                error={teamsError}
+                onRetry={reloadTeams}
+                showLeftIcon={true}
+              />
             </div>
 
             {/* TEAM ADMIN WHATSAPP OTP VERIFICATION SECTION */}

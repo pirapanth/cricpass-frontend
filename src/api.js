@@ -59,8 +59,17 @@ api.interceptors.response.use(
         : null) ||
       error.message ||
       'An unexpected error occurred';
-    
-    return Promise.reject(new Error(customMessage));
+
+    const normalizedError = new Error(customMessage);
+    normalizedError.status = error.response?.status;
+    normalizedError.code = error.code;
+    normalizedError.response = error.response;
+    normalizedError.isCanceled =
+      axios.isCancel(error) ||
+      error.code === 'ERR_CANCELED' ||
+      error.name === 'CanceledError';
+
+    return Promise.reject(normalizedError);
   }
 );
 
@@ -129,12 +138,116 @@ export const deleteTeam = async (id) => {
   return response.data;
 };
 
+const isRetryableTeamsError = (error) => {
+  if (!error) return false;
+  if (
+    error.isCanceled ||
+    error.name === 'CanceledError' ||
+    error.name === 'AbortError' ||
+    error.code === 'ERR_CANCELED'
+  ) {
+    return false;
+  }
+  const status = error.status ?? error.response?.status;
+  if (!status) return true; // Network timeout, DNS, or server still booting
+  return status >= 500 || status === 408 || status === 429;
+};
+
 /**
  * Additional helpers for dropdowns & team operations
  */
-export const getTeams = async () => {
-  const response = await api.get('/teams');
-  return response.data;
+export const getTeams = async (config = {}) => {
+  const response = await api.get('/teams', config);
+  const payload = response?.data;
+  const safeTeams = Array.isArray(payload?.data)
+    ? payload.data
+    : Array.isArray(payload)
+      ? payload
+      : [];
+
+  return {
+    ...(payload && typeof payload === 'object' ? payload : { success: true }),
+    data: safeTeams,
+  };
+};
+
+/**
+ * Fetch teams with automatic retries and progressive status callbacks
+ * to handle Render free-tier cold starts (15-35s wake-up latency).
+ */
+export const getTeamsWithRetry = async ({
+  maxAttempts = 4,
+  baseDelayMs = 2000,
+  timeoutMs = 35000,
+  signal,
+  onStatusChange,
+} = {}) => {
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    if (signal?.aborted) {
+      const abortErr = new Error('Request aborted');
+      abortErr.name = 'AbortError';
+      abortErr.isCanceled = true;
+      throw abortErr;
+    }
+
+    if (onStatusChange) {
+      onStatusChange({
+        attempt,
+        maxAttempts,
+        phase: attempt === 1 ? 'initial' : 'retrying',
+        message:
+          attempt === 1
+            ? 'Loading teams from server...'
+            : `Waking up server / Loading teams... (Attempt ${attempt} of ${maxAttempts})`,
+      });
+    }
+
+    try {
+      const result = await getTeams({ timeout: timeoutMs, signal });
+      return {
+        ...result,
+        data: Array.isArray(result?.data) ? result.data : [],
+      };
+    } catch (error) {
+      lastError = error;
+
+      if (!isRetryableTeamsError(error) || attempt >= maxAttempts || signal?.aborted) {
+        throw error;
+      }
+
+      const waitMs = Math.min(baseDelayMs * attempt, 6000);
+      if (onStatusChange) {
+        onStatusChange({
+          attempt,
+          maxAttempts,
+          phase: 'waiting',
+          message: `Server is waking up from sleep... Retrying in ${Math.round(waitMs / 1000)}s (Attempt ${attempt + 1} of ${maxAttempts})`,
+        });
+      }
+
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(resolve, waitMs);
+        if (signal) {
+          const onAbort = () => {
+            clearTimeout(timer);
+            const abortErr = new Error('Request aborted');
+            abortErr.name = 'AbortError';
+            abortErr.isCanceled = true;
+            reject(abortErr);
+          };
+          if (signal.aborted) {
+            onAbort();
+            return;
+          }
+          signal.addEventListener('abort', onAbort, { once: true });
+        }
+      });
+    }
+  }
+
+  throw lastError || new Error('Unable to load registered teams.');
 };
 
 export const registerTeam = async (teamData) => {

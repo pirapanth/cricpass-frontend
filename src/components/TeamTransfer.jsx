@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   ArrowLeftRight,
   ShieldAlert,
@@ -7,7 +7,6 @@ import {
   AlertCircle,
   RefreshCw,
   User,
-  Building,
   Calendar,
   Send,
   Mail,
@@ -17,10 +16,10 @@ import {
   Check,
   Lock,
   ChevronRight,
-  Clock
+  Clock,
+  Search
 } from 'lucide-react';
 import {
-  getTeams,
   searchPlayerByNIC,
   initiateTransfer,
   verifyTransferOTP,
@@ -30,10 +29,25 @@ import {
   cancelTransfer
 } from '../api';
 import { formatDisplayPhone, maskDisplayPhone } from '../utils/phoneUtils';
+import useTeams from '../hooks/useTeams';
+import TeamSelectDropdown from './TeamSelectDropdown';
+import LoadingPopup from './LoadingPopup';
 
 export default function TeamTransfer() {
+  // Fetch teams with Render cold-start resilience & guaranteed array state
+  const {
+    teams,
+    loadingTeams,
+    teamsError,
+    loadingMessage,
+    attempt,
+    reloadTeams,
+  } = useTeams();
+  const [teamsPopupDismissed, setTeamsPopupDismissed] = useState(false);
+
+  const safeTeams = Array.isArray(teams) ? teams : [];
+
   // Step 1: Form state
-  const [teams, setTeams] = useState([]);
   const [playerNic, setPlayerNic] = useState('');
   const [playerData, setPlayerData] = useState(null);
   const [searchingPlayer, setSearchingPlayer] = useState(false);
@@ -80,22 +94,6 @@ export default function TeamTransfer() {
   const [clearanceMessage, setClearanceMessage] = useState(null);
   const [clearanceError, setClearanceError] = useState(null);
   const [cancellingTransfer, setCancellingTransfer] = useState(false);
-
-  // Fetch teams list on mount
-  const fetchTeams = async () => {
-    try {
-      const res = await getTeams();
-      if (res?.data) {
-        setTeams(res.data);
-      }
-    } catch (err) {
-      console.error('Failed to load teams:', err);
-    }
-  };
-
-  useEffect(() => {
-    fetchTeams();
-  }, []);
 
   // Lookup player by NIC
   const handleLookupPlayer = async () => {
@@ -502,6 +500,28 @@ export default function TeamTransfer() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 space-y-8">
+      {/* Loading Popup: Player NIC Check ("Checking...!") or Cold-Start Team Loading */}
+      <LoadingPopup
+        isOpen={
+          searchingPlayer ||
+          loadingTeams ||
+          (!teamsPopupDismissed && Boolean(teamsError))
+        }
+        title={searchingPlayer ? 'Checking...!' : 'Loading Teams...'}
+        message={
+          searchingPlayer
+            ? 'Checking player NIC record in CricPass database...'
+            : loadingMessage
+        }
+        badge={!searchingPlayer && attempt > 1 ? `Attempt ${attempt} of 4` : null}
+        error={!searchingPlayer ? teamsError : null}
+        onRetry={() => {
+          setTeamsPopupDismissed(false);
+          reloadTeams();
+        }}
+        onDismiss={() => setTeamsPopupDismissed(true)}
+      />
+
       {/* Title Header */}
       <div className="text-center space-y-2">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-500/10 border border-teal-500/20 text-teal-400 text-xs font-semibold tracking-wide uppercase">
@@ -977,21 +997,33 @@ export default function TeamTransfer() {
             <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
               1. Player National Identity Card (NIC)
             </label>
-            <div className="flex gap-2">
+            <div className="flex items-stretch gap-2 w-full">
               <input
                 type="text"
                 value={playerNic}
                 onChange={(e) => setPlayerNic(e.target.value.toUpperCase())}
-                placeholder="Enter Player NIC (e.g., 199707291234 or 971234567V)"
-                className="flex-1 px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-white font-mono placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleLookupPlayer();
+                  }
+                }}
+                placeholder="Enter Player NIC (e.g., 199707291234)"
+                className="flex-1 min-w-0 px-3.5 sm:px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-white font-mono text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
               <button
                 type="button"
                 onClick={handleLookupPlayer}
                 disabled={searchingPlayer}
-                className="px-5 py-3 bg-slate-700 hover:bg-slate-600 text-white font-semibold rounded-xl text-sm transition-colors cursor-pointer"
+                aria-label="Find Player"
+                title="Find Player"
+                className="shrink-0 w-12 sm:w-auto sm:px-4 py-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white font-semibold rounded-xl text-sm transition-colors cursor-pointer flex items-center justify-center shadow-lg shadow-emerald-950/40"
               >
-                {searchingPlayer ? 'Checking...' : 'Find Player'}
+                {searchingPlayer ? (
+                  <RefreshCw className="w-5 h-5 animate-spin" />
+                ) : (
+                  <Search className="w-5 h-5" />
+                )}
               </button>
             </div>
 
@@ -1213,26 +1245,48 @@ export default function TeamTransfer() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Current Team */}
             <div className="space-y-2">
-              <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
-                Current Releasing Team
-              </label>
-              <select
+              <div className="flex items-center justify-between gap-2">
+                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
+                  Current Releasing Team
+                </label>
+                {teamsError && !loadingTeams && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTeamsPopupDismissed(false);
+                      reloadTeams();
+                    }}
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-400 hover:text-emerald-300 cursor-pointer"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                    <span>Retry</span>
+                  </button>
+                )}
+              </div>
+              <TeamSelectDropdown
+                teams={safeTeams}
                 value={currentTeamId}
-                onChange={(e) => setCurrentTeamId(e.target.value)}
-                className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm"
-              >
-                <option value="">-- Select Current Team --</option>
-                {teams.map((t) => (
-                  <option key={t._id} value={t._id}>
-                    {t.team_name} ({t.team_id})
-                  </option>
-                ))}
-              </select>
+                onChange={(selectedId) => {
+                  setCurrentTeamId(selectedId);
+                  if (selectedId && selectedId === newTeamId) {
+                    setNewTeamId('');
+                  }
+                }}
+                placeholder="-- Select Current Team --"
+                emptyOptionLabel="-- Clear Selection --"
+                loading={loadingTeams}
+                error={teamsError}
+                onRetry={reloadTeams}
+              />
               {currentTeamId && (
                 <div className="text-xs text-slate-400 font-mono px-1">
                   Admin WhatsApp:{' '}
                   <strong className="text-emerald-300">
-                    {maskDisplayPhone(teams.find((t) => t._id === currentTeamId)?.phone_number) || 'No phone registered'}
+                    {maskDisplayPhone(
+                      safeTeams.find(
+                        (t) => t._id === currentTeamId || t.team_id === currentTeamId
+                      )?.phone_number
+                    ) || 'No phone registered'}
                   </strong>
                 </div>
               )}
@@ -1243,23 +1297,26 @@ export default function TeamTransfer() {
               <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
                 Destination Receiving Team
               </label>
-              <select
+              <TeamSelectDropdown
+                teams={safeTeams}
                 value={newTeamId}
-                onChange={(e) => setNewTeamId(e.target.value)}
-                className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm"
-              >
-                <option value="">-- Select New Team --</option>
-                {teams.map((t) => (
-                  <option key={t._id} value={t._id} disabled={t._id === currentTeamId}>
-                    {t.team_name} ({t.team_id}) {t._id === currentTeamId ? '(Current)' : ''}
-                  </option>
-                ))}
-              </select>
+                onChange={(selectedId) => setNewTeamId(selectedId)}
+                placeholder="-- Select New Team --"
+                disabledTeamId={currentTeamId}
+                disabledBadgeText="Current"
+                loading={loadingTeams}
+                error={teamsError}
+                onRetry={reloadTeams}
+              />
               {newTeamId && (
                 <div className="text-xs text-slate-400 font-mono px-1">
                   Admin WhatsApp:{' '}
                   <strong className="text-emerald-300">
-                    {maskDisplayPhone(teams.find((t) => t._id === newTeamId)?.phone_number) || 'No phone registered'}
+                    {maskDisplayPhone(
+                      safeTeams.find(
+                        (t) => t._id === newTeamId || t.team_id === newTeamId
+                      )?.phone_number
+                    ) || 'No phone registered'}
                   </strong>
                 </div>
               )}

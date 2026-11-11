@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   UserCircle2,
   Building,
@@ -34,7 +34,6 @@ import {
   Key
 } from 'lucide-react';
 import {
-  getTeams,
   registerTeam,
   updateAdminPhone,
   getTeamById,
@@ -49,6 +48,7 @@ import {
   changeTeamEmail,
   lookupTeamsByPhone
 } from '../api';
+import useTeams from '../hooks/useTeams';
 import {
   handlePlus94PhoneInput,
   handlePlus94KeyDown,
@@ -58,8 +58,11 @@ import {
 } from '../utils/phoneUtils';
 
 export default function TeamAdminPortal() {
-  const [teams, setTeams] = useState([]);
-  const [loadingTeams, setLoadingTeams] = useState(true);
+  const {
+    teams,
+    loadingTeams,
+    reloadTeams: fetchTeams,
+  } = useTeams();
 
   // Authentication Mode: 'SIGN_IN' | 'REGISTER_TEAM'
   const [authMode, setAuthMode] = useState('SIGN_IN');
@@ -184,24 +187,6 @@ export default function TeamAdminPortal() {
   const [forgotError, setForgotError] = useState(null);
   const [forgotSuccess, setForgotSuccess] = useState(null);
 
-  useEffect(() => {
-    fetchTeams();
-  }, []);
-
-  const fetchTeams = async () => {
-    setLoadingTeams(true);
-    try {
-      const res = await getTeams();
-      if (res?.data) {
-        setTeams(res.data);
-      }
-    } catch (err) {
-      console.error('Failed to load teams:', err);
-    } finally {
-      setLoadingTeams(false);
-    }
-  };
-
   const loadMasterAdminOverview = async () => {
     setLoadingOverview(true);
     try {
@@ -299,8 +284,14 @@ export default function TeamAdminPortal() {
       return;
     }
 
+    const safeTeamsList = Array.isArray(teams) ? teams : [];
+    if (loadingTeams && safeTeamsList.length === 0) {
+      setLoginError('Registered clubs are still loading from the server. Please wait a moment and try again.');
+      return;
+    }
+
     const normalized = typedIdentifier.toUpperCase();
-    const matchedTeam = teams.find(
+    const matchedTeam = safeTeamsList.find(
       (t) =>
         String(t.team_id || '').toUpperCase() === normalized ||
         String(t.team_name || '').toUpperCase() === normalized
@@ -1641,7 +1632,7 @@ export default function TeamAdminPortal() {
                       className="px-3.5 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs focus:outline-none focus:ring-2 focus:ring-cyan-500 cursor-pointer"
                     >
                       <option value="">-- Select Team to view players --</option>
-                      {adminOverviewData?.teams?.map((t) => (
+                      {(Array.isArray(adminOverviewData?.teams) ? adminOverviewData.teams : []).map((t) => (
                         <option key={t._id} value={t._id}>
                           {t.team_name} ({t.team_id})
                         </option>
@@ -1933,7 +1924,7 @@ export default function TeamAdminPortal() {
                       className="px-3.5 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs focus:outline-none focus:ring-2 focus:ring-cyan-500 cursor-pointer"
                     >
                       <option value="">-- All Clubs (Entire League) --</option>
-                      {adminOverviewData?.teams?.map((t) => (
+                      {(Array.isArray(adminOverviewData?.teams) ? adminOverviewData.teams : []).map((t) => (
                         <option key={t._id} value={t._id}>
                           {t.team_name} ({t.team_id})
                         </option>
@@ -2177,7 +2168,7 @@ export default function TeamAdminPortal() {
                 <h3 className="font-bold text-white text-base">Club Player Roster</h3>
               </div>
               <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-900 border border-slate-700 text-slate-300 font-mono">
-                No of Players : {teamRoster.length} 
+                Players.No: {teamRoster.length} 
               </span>
             </div>
 
