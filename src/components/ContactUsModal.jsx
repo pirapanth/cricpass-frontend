@@ -70,8 +70,8 @@ export default function ContactUsModal({ isOpen, onClose }) {
 
     try {
       const payload = {
-        user_email: 'cricpassadmin@gmail.com',
-        email: 'cricpassadmin@gmail.com',
+        user_email: 'v70524817@gmail.com',
+        email: 'v70524817@gmail.com',
         subject: subject.trim() || 'General Inquiry / CricPass Support Request',
         description: description.trim(),
         issue_description: description.trim(),
