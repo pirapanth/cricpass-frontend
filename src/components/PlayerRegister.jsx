@@ -613,31 +613,28 @@ export default function PlayerRegister({ onPlayerRegistered }) {
                       className="w-14 h-14 rounded-xl object-cover border-2 border-emerald-500 shadow-md"
                     />
                     <div>
-                      <div className="flex items-center gap-1.5 text-xs font-bold text-white">
-                        <FileCheck className="w-4 h-4 text-emerald-400" />
-                        <span className="truncate max-w-[200px]">{selectedFileName || 'player-photo.jpg'}</span>
-                      </div>
                       <span className="text-[11px] text-emerald-400 font-medium">Image loaded ready for upload</span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold border border-slate-700 transition-colors cursor-pointer"
+                        >
+                          Change
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleRemoveImage}
+                          className="p-1.5 text-rose-400 hover:text-white hover:bg-rose-950/60 rounded-lg transition-colors cursor-pointer"
+                          title="Remove image"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold border border-slate-700 transition-colors cursor-pointer"
-                    >
-                      Change
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleRemoveImage}
-                      className="p-1.5 text-rose-400 hover:text-white hover:bg-rose-950/60 rounded-lg transition-colors cursor-pointer"
-                      title="Remove image"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
+                  
                 </div>
               )}
             </div>
