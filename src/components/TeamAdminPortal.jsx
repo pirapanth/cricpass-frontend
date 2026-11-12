@@ -434,7 +434,7 @@ export default function TeamAdminPortal() {
     const phoneToVerify = newTeamData.phone_number?.trim();
     if (!isValidPlus94Phone(phoneToVerify)) {
       setTeamEmailOtpError(
-        'Please enter a valid 9-digit WhatsApp number after +94 without a leading 0 (e.g. +94771454651)'
+        'Please enter a valid 9-digit WhatsApp number after +94 without a leading 0 (e.g. +94770000000)'
       );
       return;
     }
@@ -520,7 +520,7 @@ export default function TeamAdminPortal() {
     }
     if (!isValidPlus94Phone(newTeamData.phone_number)) {
       setRegisterTeamError(
-        'WhatsApp Number must be +94 followed by 9 digits without a leading 0 (e.g. +94771454651)'
+        'WhatsApp Number must be +94 followed by 9 digits without a leading 0 (e.g. +94770000000)'
       );
       return;
     }
@@ -657,7 +657,7 @@ export default function TeamAdminPortal() {
       return;
     }
     if (!isValidPlus94Phone(newPhoneNumber.trim())) {
-      setModalError('Phone number must be +94 followed by 9 digits without a leading 0 (e.g. +94771454651)');
+      setModalError('Phone number must be +94 followed by 9 digits without a leading 0 (e.g. +94770000000)');
       return;
     }
     if (newPhoneNumber.trim() === formatDisplayPhone(authenticatedTeam.phone_number)) {
@@ -910,7 +910,7 @@ export default function TeamAdminPortal() {
   const handleSendNewEmailOtp = async () => {
     const contactToVerify = newAdminEmail.trim();
     if (!isValidPlus94Phone(contactToVerify)) {
-      setEmailModalError('WhatsApp number must be +94 followed by 9 digits without a leading 0 (e.g. +94771454651)');
+      setEmailModalError('WhatsApp number must be +94 followed by 9 digits without a leading 0 (e.g. +94770000000)');
       return;
     }
 
@@ -1220,12 +1220,12 @@ export default function TeamAdminPortal() {
                           setTeamEmailOtpMessage(null);
                           setTeamEmailOtpError(null);
                         }}
-                        placeholder="+94771454651"
+                        placeholder="+94770000000"
                         className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm"
                         required
                       />
                       <p className="text-[11px] text-slate-400">
-                        Always starts with <span className="text-emerald-400 font-mono font-bold">+94</span> followed by 9 digits (e.g. <span className="font-mono text-slate-300">+94771454651</span>). Leading 0 is removed automatically.
+                        Always starts with <span className="text-emerald-400 font-mono font-bold">+94</span> followed by 9 digits (e.g. <span className="font-mono text-slate-300">+94770000000</span>). Leading 0 is removed automatically.
                       </p>
 
                       {/* WhatsApp OTP Verification Section */}
@@ -2277,7 +2277,7 @@ export default function TeamAdminPortal() {
                     value={newPhoneNumber}
                     onKeyDown={handlePlus94KeyDown}
                     onChange={(e) => setNewPhoneNumber(handlePlus94PhoneInput(e.target.value))}
-                    placeholder="+94771454651"
+                    placeholder="+94770000000"
                     className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-white font-mono focus:outline-none focus:ring-2 focus:ring-cyan-500 text-sm"
                     required
                   />
@@ -2774,7 +2774,7 @@ export default function TeamAdminPortal() {
                       setNewEmailOtpSent(false);
                       setNewEmailOtpCode('');
                     }}
-                    placeholder="+94771454651"
+                    placeholder="+94770000000"
                     className="w-full px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white font-mono text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                     required
                   />

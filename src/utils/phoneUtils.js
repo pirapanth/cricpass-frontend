@@ -1,6 +1,6 @@
 /**
  * Enforces "+94" country code prefix and strips any leading "0" or non-digits,
- * capping the subscriber portion to 9 digits (e.g., "+94771454651").
+ * capping the subscriber portion to 9 digits (e.g., "+94770000000").
  */
 export function handlePlus94PhoneInput(rawValue) {
   if (!rawValue) return '+94';
@@ -44,7 +44,7 @@ export function handlePlus94KeyDown(e) {
 }
 
 /**
- * Validates strictly "+94" followed by 9 non-zero-leading digits (e.g., "+94771454651").
+ * Validates strictly "+94" followed by 9 non-zero-leading digits (e.g., "+94770000000").
  */
 export function isValidPlus94Phone(phone) {
   if (!phone) return false;
@@ -54,10 +54,10 @@ export function isValidPlus94Phone(phone) {
 /**
  * Formats any stored Sri Lankan phone number to "+94XXXXXXXXX" display format.
  * Examples:
- * - "0771454651" -> "+94771454651"
- * - "94771454651" -> "+94771454651"
- * - "+940771454651" -> "+94771454651"
- * - "771454651" -> "+94771454651"
+ * - "0771454651" -> "+94770000000"
+ * - "94770000000" -> "+94770000000"
+ * - "+940771454651" -> "+94770000000"
+ * - "771454651" -> "+94770000000"
  */
 export function formatDisplayPhone(phone) {
   if (!phone) return '';
@@ -81,7 +81,7 @@ export function formatDisplayPhone(phone) {
 
 /**
  * Masks the middle digits of a formatted phone number for UI privacy
- * (e.g. "+94771454651" -> "+9477****651").
+ * (e.g. "+94770000000" -> "+9477****651").
  */
 export function maskDisplayPhone(phone) {
   const formatted = formatDisplayPhone(phone);
