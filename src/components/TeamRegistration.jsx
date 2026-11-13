@@ -37,7 +37,7 @@ export function TeamVerificationStep({ verificationData, onReset, formData }) {
     }
   };
 
-  const whatsappUrl = `https://wa.me/94771234567?text=${encodeURIComponent(verifyToken || '')}`;
+  const whatsappUrl = `https://wa.me/94726589947?text=${encodeURIComponent(verifyToken || '')}`;
 
   return (
     <div className="space-y-6 animate-fadeIn">
@@ -79,7 +79,7 @@ export function TeamVerificationStep({ verificationData, onReset, formData }) {
             </div>
             <p className="text-[11px] text-slate-400">
               Admin WhatsApp Bot Number:{' '}
-              <strong className="text-slate-200 font-mono">+94 77 123 4567</strong>
+              <strong className="text-slate-200 font-mono">+94 72 658 9947</strong>
             </p>
           </div>
 
