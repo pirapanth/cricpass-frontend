@@ -255,6 +255,16 @@ export const registerTeam = async (teamData) => {
   return response.data;
 };
 
+export const verifyTeamOtp = async ({ verifyToken, otp }) => {
+  const response = await api.post('/teams/verify-otp', { verifyToken, otp });
+  return response.data;
+};
+
+export const completeTeamRegistration = async ({ verifyToken, password, confirmPassword }) => {
+  const response = await api.post('/teams/complete-registration', { verifyToken, password, confirmPassword });
+  return response.data;
+};
+
 export const getTeamById = async (id) => {
   const response = await api.get(`/teams/${id}`);
   return response.data;

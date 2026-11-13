@@ -1149,9 +1149,12 @@ export default function TeamAdminPortal() {
                 <TeamRegistration
                   onSuccess={(data) => {
                     fetchTeams();
-                    if (data?.data?.team_id || data?.team_id) {
-                      setLoginTeamId(data?.data?.team_id || data?.team_id);
+                    const newId = data?.teamId || data?.team_id || data?.data?.team_id;
+                    if (newId) {
+                      setLoginTeamId(newId);
+                      setLoginSuccess(`Team "${data?.teamName || 'Your Club'}" registered successfully! Please sign in with Team ID: ${newId}`);
                     }
+                    setAuthMode('SIGN_IN');
                   }}
                   onCancel={() => setAuthMode('SIGN_IN')}
                 />
