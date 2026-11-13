@@ -461,7 +461,7 @@ export default function TeamRegistration({ onSuccess, onCancel }) {
                   className="w-full py-3.5 px-6 bg-[#25D366] hover:bg-[#20ba5a] text-white font-bold rounded-xl text-sm transition-all flex items-center justify-center gap-2.5 shadow-lg shadow-[#25D366]/20 cursor-pointer"
                 >
                   <MessageSquare className="w-5 h-5 fill-current" />
-                  <span>Send Token via WhatsApp</span>
+                  <span>Send Verify Code via WhatsApp</span>
                   <ExternalLink className="w-4 h-4 opacity-80" />
                 </a>
 
