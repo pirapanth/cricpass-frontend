@@ -361,10 +361,18 @@ export const lookupTeamsByPhone = async (phone_number) => {
 };
 
 /**
- * 14. Change Team Admin Email Address (after dual OTP verification)
+ * 13c. Initiate new phone verification for Team Admin
  */
-export const changeTeamEmail = async ({ team_id, new_email, new_phone, new_password }) => {
-  const response = await api.put('/teams/change-email', { team_id, new_email, new_phone, new_password });
+export const initiatePhoneChange = async ({ team_id, new_phone }) => {
+  const response = await api.post('/teams/initiate-phone-change', { team_id, new_phone });
+  return response.data;
+};
+
+/**
+ * 14. Change Team Admin WhatsApp / Email Address (after dual OTP verification)
+ */
+export const changeTeamEmail = async ({ team_id, new_email, new_phone, new_password, verifyToken }) => {
+  const response = await api.put('/teams/change-email', { team_id, new_email, new_phone, new_password, verifyToken });
   return response.data;
 };
 

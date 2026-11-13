@@ -22,6 +22,3 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-
-# Baileys WhatsApp Session State
-auth_info_baileys/git rm -r --cached auth_info_baileys

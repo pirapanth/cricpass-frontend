@@ -31,11 +31,17 @@ import {
   Search,
   Filter,
   ChevronRight,
-  Key
+  Key,
+  MessageSquare,
+  Copy,
+  Check,
+  ExternalLink
 } from 'lucide-react';
 import {
   registerTeam,
+  verifyTeamOtp,
   updateAdminPhone,
+  initiatePhoneChange,
   getTeamById,
   getAdminOverview,
   deletePlayer,
@@ -57,6 +63,9 @@ import {
   formatDisplayPhone,
   maskDisplayPhone
 } from '../utils/phoneUtils';
+
+const ADMIN_WHATSAPP_NUMBER =
+  import.meta.env.VITE_ADMIN_WHATSAPP_NUMBER || '94726589947';
 
 export default function TeamAdminPortal() {
   const {
@@ -149,7 +158,7 @@ export default function TeamAdminPortal() {
   const [pwdModalError, setPwdModalError] = useState(null);
   const [pwdModalSuccess, setPwdModalSuccess] = useState(null);
 
-  // Team Admin Change Email Modal State
+  // Team Admin Change WhatsApp Number Modal State
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [emailChangeStep, setEmailChangeStep] = useState(1); // 1: verify current, 2: verify new, 3: set password
   const [currEmailOtpSent, setCurrEmailOtpSent] = useState(false);
@@ -158,6 +167,9 @@ export default function TeamAdminPortal() {
   const [currEmailOtpVerifying, setCurrEmailOtpVerifying] = useState(false);
   const [currEmailVerified, setCurrEmailVerified] = useState(false);
   const [newAdminEmail, setNewAdminEmail] = useState('');
+  const [newEmailVerifyToken, setNewEmailVerifyToken] = useState('');
+  const [newEmailVerifyMethod, setNewEmailVerifyMethod] = useState('whatsapp');
+  const [newEmailTokenCopied, setNewEmailTokenCopied] = useState(false);
   const [newEmailOtpSent, setNewEmailOtpSent] = useState(false);
   const [newEmailOtpSending, setNewEmailOtpSending] = useState(false);
   const [newEmailOtpCode, setNewEmailOtpCode] = useState('');
@@ -836,7 +848,7 @@ export default function TeamAdminPortal() {
   };
 
   // -------------------------------------------------------------
-  // Change Email Handlers (for Logged-in Team Admin)
+  // Change WhatsApp Number Handlers (for Logged-in Team Admin)
   // -------------------------------------------------------------
   const openEmailModal = () => {
     setShowEmailModal(true);
@@ -847,6 +859,9 @@ export default function TeamAdminPortal() {
     setCurrEmailOtpVerifying(false);
     setCurrEmailVerified(false);
     setNewAdminEmail('+94');
+    setNewEmailVerifyToken('');
+    setNewEmailVerifyMethod('whatsapp');
+    setNewEmailTokenCopied(false);
     setNewEmailOtpSent(false);
     setNewEmailOtpSending(false);
     setNewEmailOtpCode('');
@@ -899,6 +914,10 @@ export default function TeamAdminPortal() {
       if (res?.success) {
         setCurrEmailVerified(true);
         setEmailChangeStep(2);
+        setNewAdminEmail('+94');
+        setNewEmailVerifyToken('');
+        setNewEmailVerifyMethod('whatsapp');
+        setNewEmailOtpCode('');
       }
     } catch (err) {
       setEmailModalError(err.message || 'Invalid or expired OTP code');
@@ -907,40 +926,87 @@ export default function TeamAdminPortal() {
     }
   };
 
-  // Step 2: Send OTP to New WhatsApp Number
-  const handleSendNewEmailOtp = async () => {
+  // Step 2: Request Verification Token & Start WhatsApp inbound flow for New Number
+  const handleInitiateNewPhoneVerification = async () => {
     const contactToVerify = newAdminEmail.trim();
     if (!isValidPlus94Phone(contactToVerify)) {
       setEmailModalError('WhatsApp number must be +94 followed by 9 digits without a leading 0 (e.g. +94770000000)');
       return;
     }
 
+    const currentPhone = formatDisplayPhone(authenticatedTeam?.phone_number);
+    if (contactToVerify === currentPhone) {
+      setEmailModalError('New WhatsApp number cannot be identical to your current WhatsApp number.');
+      return;
+    }
+
     setNewEmailOtpSending(true);
     setEmailModalError(null);
     try {
-      await sendWhatsAppOTP(contactToVerify, 'New Admin WhatsApp Verification');
-      setNewEmailOtpSent(true);
+      const res = await initiatePhoneChange({
+        team_id: authenticatedTeam?.team_id,
+        new_phone: contactToVerify
+      });
+
+      if (res?.success) {
+        setNewEmailVerifyToken(res.verifyToken || '');
+        setNewEmailVerifyMethod(res.method || 'whatsapp');
+        setNewEmailOtpSent(true);
+        setNewEmailOtpCode('');
+      } else {
+        setEmailModalError(res?.message || 'Failed to initiate verification for new WhatsApp number');
+      }
     } catch (err) {
-      setEmailModalError(err.message || 'Failed to dispatch verification code to new WhatsApp');
+      setEmailModalError(err.message || 'Failed to initiate verification for new WhatsApp number');
     } finally {
       setNewEmailOtpSending(false);
     }
   };
 
-  // Step 2: Verify OTP for New WhatsApp Number
+  // Copy Verification Token
+  const handleCopyNewToken = () => {
+    if (newEmailVerifyToken) {
+      navigator.clipboard.writeText(newEmailVerifyToken);
+      setNewEmailTokenCopied(true);
+      setTimeout(() => setNewEmailTokenCopied(false), 2000);
+    }
+  };
+
+  // Reset or Change New Phone Number
+  const handleResetNewPhone = () => {
+    setNewEmailVerifyToken('');
+    setNewEmailOtpSent(false);
+    setNewEmailOtpCode('');
+    setEmailModalError(null);
+  };
+
+  // Step 2: Verify 6-Digit OTP received on New WhatsApp Number
   const handleVerifyNewEmailOtp = async (e) => {
     if (e) e.preventDefault();
-    if (!newEmailOtpCode.trim()) {
-      setEmailModalError('Please enter the 6-digit OTP received on WhatsApp');
+    const cleanOtp = newEmailOtpCode.trim();
+    if (!cleanOtp || cleanOtp.length !== 6) {
+      setEmailModalError('Please enter the 6-digit OTP received on your new WhatsApp');
       return;
     }
+
     setNewEmailOtpVerifying(true);
     setEmailModalError(null);
     try {
-      const res = await verifyWhatsAppOTP(newAdminEmail.trim(), newEmailOtpCode.trim());
+      let res;
+      if (newEmailVerifyToken) {
+        res = await verifyTeamOtp({
+          verifyToken: newEmailVerifyToken,
+          otp: cleanOtp
+        });
+      } else {
+        res = await verifyWhatsAppOTP(newAdminEmail.trim(), cleanOtp);
+      }
+
       if (res?.success) {
         setNewEmailVerified(true);
         setEmailChangeStep(3);
+      } else {
+        setEmailModalError(res?.error || res?.message || 'Invalid or expired OTP code');
       }
     } catch (err) {
       setEmailModalError(err.message || 'Invalid or expired OTP code');
@@ -973,7 +1039,8 @@ export default function TeamAdminPortal() {
         team_id: authenticatedTeam.team_id,
         new_phone: cleanNewPhone,
         new_email: cleanNewPhone,
-        new_password: emailNewPassword.trim()
+        new_password: emailNewPassword.trim(),
+        verifyToken: newEmailVerifyToken
       });
 
       if (res?.data) {
@@ -2348,15 +2415,15 @@ export default function TeamAdminPortal() {
       )}
 
       {/* ============================================================== */}
-      {/* MODAL 4: TEAM ADMIN CHANGE EMAIL MODAL                         */}
+      {/* MODAL 4: TEAM ADMIN CHANGE WHATSAPP NUMBER MODAL               */}
       {/* ============================================================== */}
       {showEmailModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fadeIn">
           <div className="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-lg p-6 sm:p-7 space-y-5 shadow-2xl relative">
             <div className="flex items-center justify-between pb-3 border-b border-slate-700">
               <div className="flex items-center gap-2">
-                <Mail className="w-5 h-5 text-teal-400" />
-                <h3 className="font-bold text-white text-base">Change Admin Whatsapp No</h3>
+                <Phone className="w-5 h-5 text-teal-400" />
+                <h3 className="font-bold text-white text-base">Change Admin WhatsApp Number</h3>
               </div>
               <button
                 type="button"
@@ -2371,12 +2438,12 @@ export default function TeamAdminPortal() {
             <div className="flex items-center justify-between text-[11px] font-semibold px-1">
               <div className={`flex items-center gap-1 ${emailChangeStep >= 1 ? 'text-teal-400' : 'text-slate-500'}`}>
                 <span className="w-5 h-5 rounded-full border border-current flex items-center justify-center text-[10px]">1</span>
-                <span>Current Whatsapp No</span>
+                <span>Current WhatsApp</span>
               </div>
               <div className={`h-0.5 flex-1 mx-2 ${emailChangeStep >= 2 ? 'bg-teal-500' : 'bg-slate-700'}`}></div>
               <div className={`flex items-center gap-1 ${emailChangeStep >= 2 ? 'text-teal-400' : 'text-slate-500'}`}>
                 <span className="w-5 h-5 rounded-full border border-current flex items-center justify-center text-[10px]">2</span>
-                <span>New Whatsapp No</span>
+                <span>New WhatsApp</span>
               </div>
               <div className={`h-0.5 flex-1 mx-2 ${emailChangeStep >= 3 ? 'bg-teal-500' : 'bg-slate-700'}`}></div>
               <div className={`flex items-center gap-1 ${emailChangeStep >= 3 ? 'text-teal-400' : 'text-slate-500'}`}>
@@ -2399,13 +2466,13 @@ export default function TeamAdminPortal() {
               </div>
             )}
 
-            {/* STEP 1: VERIFY CURRENT EMAIL */}
+            {/* STEP 1: VERIFY CURRENT WHATSAPP */}
             {emailChangeStep === 1 && (
               <div className="space-y-4">
                 <div className="p-3 rounded-xl bg-slate-900 border border-slate-700 text-xs space-y-1">
-                  <span className="text-slate-400 block font-medium">Current Registered WhatsApp / Contact:</span>
+                  <span className="text-slate-400 block font-medium">Current Registered WhatsApp Number:</span>
                   <span className="text-white font-mono font-bold text-sm">
-                    {formatDisplayPhone(authenticatedTeam?.phone_number) || authenticatedTeam?.admin_email}
+                    {maskDisplayPhone(authenticatedTeam?.phone_number) || formatDisplayPhone(authenticatedTeam?.phone_number) || authenticatedTeam?.admin_email}
                   </span>
                   <p className="text-[11px] text-slate-400 mt-1">
                     Step 1 requires verifying authorization on your current registered WhatsApp number.
@@ -2471,92 +2538,188 @@ export default function TeamAdminPortal() {
               </div>
             )}
 
-            {/* STEP 2: VERIFY NEW CONTACT */}
+            {/* STEP 2: VERIFY NEW WHATSAPP NUMBER */}
             {emailChangeStep === 2 && (
               <div className="space-y-4">
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
-                    WhatsApp Number (with Country Code)
-                  </label>
-                  <input
-                    type="tel"
-                    maxLength={12}
-                    value={newAdminEmail}
-                    onKeyDown={handlePlus94KeyDown}
-                    onChange={(e) => {
-                      setNewAdminEmail(handlePlus94PhoneInput(e.target.value));
-                      setNewEmailOtpSent(false);
-                      setNewEmailOtpCode('');
-                    }}
-                    placeholder="+94770000000"
-                    className="w-full px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white font-mono text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                    required
-                  />
-                  <p className="text-[11px] text-slate-500">
-                    Fixed +94 prefix • Enter 9 digits (leading 0 is automatically removed)
-                  </p>
-                </div>
-
-                {!newEmailOtpSent ? (
-                  <button
-                    type="button"
-                    onClick={handleSendNewEmailOtp}
-                    disabled={newEmailOtpSending || !isValidPlus94Phone(newAdminEmail)}
-                    className="w-full flex items-center justify-center gap-2 py-3 bg-teal-600 hover:bg-teal-500 text-white font-bold rounded-xl text-xs sm:text-sm transition-colors cursor-pointer disabled:opacity-50"
-                  >
-                    {newEmailOtpSending ? (
-                      <>
-                        <RefreshCw className="w-4 h-4 animate-spin" />
-                        <span>Sending OTP to New WhatsApp...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Send className="w-4 h-4" />
-                        <span>Send OTP to New WhatsApp</span>
-                      </>
-                    )}
-                  </button>
-                ) : (
-                  <form onSubmit={handleVerifyNewEmailOtp} className="space-y-3">
+                {!newEmailVerifyToken ? (
+                  <div className="space-y-4">
                     <div className="space-y-1.5">
                       <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
-                        Enter OTP Sent to New WhatsApp ({newAdminEmail})
+                        New WhatsApp Number (with Country Code)
                       </label>
                       <input
-                        type="text"
-                        maxLength={6}
-                        value={newEmailOtpCode}
-                        onChange={(e) => setNewEmailOtpCode(e.target.value.trim())}
-                        placeholder="000000"
-                        className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-center text-xl font-mono tracking-widest text-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+                        type="tel"
+                        maxLength={12}
+                        value={newAdminEmail}
+                        onKeyDown={handlePlus94KeyDown}
+                        onChange={(e) => {
+                          setNewAdminEmail(handlePlus94PhoneInput(e.target.value));
+                          setNewEmailOtpSent(false);
+                          setNewEmailOtpCode('');
+                        }}
+                        placeholder="+94770000000"
+                        className="w-full px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white font-mono text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                         required
                       />
+                      <p className="text-[11px] text-slate-500">
+                        Fixed +94 prefix • Enter 9 digits (leading 0 is automatically removed)
+                      </p>
                     </div>
 
-                    <div className="flex gap-2">
-                      <button
-                        type="submit"
-                        disabled={newEmailOtpVerifying || !newEmailOtpCode.trim()}
-                        className="flex-1 py-2.5 bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 text-white font-bold rounded-xl text-xs transition-all cursor-pointer disabled:opacity-50"
-                      >
-                        {newEmailOtpVerifying ? 'Verifying...' : 'Verify New WhatsApp OTP'}
-                      </button>
+                    <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-700/80 text-xs space-y-1 text-slate-300">
+                      <div className="flex items-center gap-1.5 text-teal-400 font-semibold">
+                        <MessageSquare className="w-3.5 h-3.5" />
+                        <span>WhatsApp Verification via CricPass Bot</span>
+                      </div>
+                      <p className="text-[11px] text-slate-400">
+                        When you click below, you will receive a unique verification token to send directly from your new WhatsApp number to our bot.
+                      </p>
+                    </div>
 
+                    <button
+                      type="button"
+                      onClick={handleInitiateNewPhoneVerification}
+                      disabled={newEmailOtpSending || !isValidPlus94Phone(newAdminEmail)}
+                      className="w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold rounded-xl text-xs sm:text-sm transition-all shadow-lg shadow-teal-900/30 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {newEmailOtpSending ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          <span>Generating Verification Code...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-4 h-4" />
+                          <span>Send Verify Code via WhatsApp</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-4 animate-fadeIn">
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-slate-900 border border-slate-700 text-xs">
+                      <div>
+                        <span className="text-slate-400 block font-medium">New WhatsApp to Verify:</span>
+                        <span className="text-emerald-400 font-mono font-bold text-sm">{newAdminEmail}</span>
+                      </div>
                       <button
                         type="button"
-                        onClick={handleSendNewEmailOtp}
-                        disabled={newEmailOtpSending}
-                        className="px-3 py-2.5 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-xl text-xs font-semibold cursor-pointer"
+                        onClick={handleResetNewPhone}
+                        className="text-xs text-slate-400 hover:text-white underline cursor-pointer"
                       >
-                        Resend
+                        Change Number
                       </button>
                     </div>
-                  </form>
+
+                    {newEmailVerifyMethod === 'whatsapp' ? (
+                      <div className="space-y-3.5 p-4 bg-slate-900/90 border border-slate-800 rounded-xl">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-lg bg-[#25D366]/15 border border-[#25D366]/30 flex items-center justify-center text-[#25D366] shrink-0">
+                            <MessageSquare className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+                              Send Token from New WhatsApp
+                            </h4>
+                            <p className="text-[11px] text-slate-400">
+                              Send your unique code from your <strong className="text-slate-200">new WhatsApp number</strong> to receive your 6-digit OTP.
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Token Box */}
+                        <div className="p-3 bg-slate-950 border border-slate-800 rounded-lg text-center space-y-1.5">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                            Your Verification Token
+                          </span>
+                          <div className="flex items-center justify-center gap-2.5">
+                            <span className="font-mono text-xl sm:text-2xl font-black text-emerald-400 tracking-widest select-all">
+                              {newEmailVerifyToken}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={handleCopyNewToken}
+                              className="p-1.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                              title="Copy Token"
+                            >
+                              {newEmailTokenCopied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                            </button>
+                          </div>
+                          <p className="text-[10px] text-slate-400">
+                            Official CricPass Bot: <strong className="text-slate-300 font-mono">+{ADMIN_WHATSAPP_NUMBER}</strong>
+                          </p>
+                        </div>
+
+                        {/* Green WhatsApp Action Button */}
+                        <div className="space-y-1.5">
+                          <a
+                            href={`https://wa.me/${ADMIN_WHATSAPP_NUMBER}?text=${encodeURIComponent(newEmailVerifyToken)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="w-full py-3 px-4 bg-[#25D366] hover:bg-[#20ba5a] text-white font-bold rounded-xl text-xs sm:text-sm transition-all flex items-center justify-center gap-2 shadow-lg shadow-[#25D366]/20 cursor-pointer"
+                          >
+                            <MessageSquare className="w-4 h-4 fill-current" />
+                            <span>Send Verify Code via WhatsApp</span>
+                            <ExternalLink className="w-3.5 h-3.5 opacity-80" />
+                          </a>
+                          <p className="text-[10px] text-slate-400 text-center italic">
+                            By clicking above, you consent to receive your CricPass OTP and official team alerts on WhatsApp.
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-3.5 rounded-xl bg-amber-950/40 border border-amber-800/40 text-amber-200 text-xs flex items-start gap-2.5">
+                        <Mail className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                        <div>
+                          <span className="font-bold block">Email Fallback Active</span>
+                          <span>WhatsApp is reconnecting. Your 6-digit OTP has been sent to your registered email address.</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 6-Digit OTP Form */}
+                    <form onSubmit={handleVerifyNewEmailOtp} className="space-y-3 pt-1">
+                      <div className="space-y-1.5">
+                        <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
+                          Enter 6-Digit OTP Received on New WhatsApp
+                        </label>
+                        <input
+                          type="text"
+                          maxLength={6}
+                          value={newEmailOtpCode}
+                          onChange={(e) => setNewEmailOtpCode(e.target.value.trim())}
+                          placeholder="000000"
+                          className="w-full px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-center text-xl font-mono tracking-widest text-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+                          required
+                        />
+                      </div>
+
+                      <div className="flex gap-2">
+                        <button
+                          type="submit"
+                          disabled={newEmailOtpVerifying || newEmailOtpCode.trim().length !== 6}
+                          className="flex-1 py-2.5 bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 text-white font-bold rounded-xl text-xs transition-all cursor-pointer disabled:opacity-50"
+                        >
+                          {newEmailOtpVerifying ? 'Verifying OTP...' : 'Verify OTP & Continue'}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleInitiateNewPhoneVerification}
+                          disabled={newEmailOtpSending}
+                          className="px-3 py-2.5 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-xl text-xs font-semibold cursor-pointer"
+                          title="Re-request token"
+                        >
+                          Resend
+                        </button>
+                      </div>
+                    </form>
+                  </div>
                 )}
               </div>
             )}
 
-            {/* STEP 3: SET NEW PASSWORD FOR NEW EMAIL */}
+            {/* STEP 3: SET NEW PASSWORD FOR NEW WHATSAPP */}
             {emailChangeStep === 3 && (
               <form onSubmit={handleSubmitNewEmailAndPassword} className="space-y-4">
                 <div className="p-3 rounded-xl bg-slate-900 border border-slate-700 text-xs space-y-1">
@@ -2635,10 +2798,10 @@ export default function TeamAdminPortal() {
                   {emailUpdating ? (
                     <span className="flex items-center justify-center gap-2">
                       <RefreshCw className="w-4 h-4 animate-spin" />
-                      <span>Saving New Email & Dispatching Credentials...</span>
+                      <span>Saving New WhatsApp & Dispatching Credentials...</span>
                     </span>
                   ) : (
-                    <span>Confirm & Update Email Address</span>
+                    <span>Confirm & Update WhatsApp Number</span>
                   )}
                 </button>
               </form>
