@@ -233,7 +233,7 @@ export default function TeamRegistration({ onSuccess, onCancel }) {
               }`}>
                 {step > 1 ? '✓' : '1'}
               </span>
-              <span>1. Team Details</span>
+              <span>Team Details</span>
             </div>
 
             <div className="flex-1 mx-3 h-0.5 bg-slate-800 relative">
@@ -249,7 +249,7 @@ export default function TeamRegistration({ onSuccess, onCancel }) {
               }`}>
                 {step > 2 ? '✓' : '2'}
               </span>
-              <span>2. Verify OTP</span>
+              <span>Verify OTP</span>
             </div>
 
             <div className="flex-1 mx-3 h-0.5 bg-slate-800 relative">
@@ -265,7 +265,7 @@ export default function TeamRegistration({ onSuccess, onCancel }) {
               }`}>
                 3
               </span>
-              <span>3. Set Password</span>
+              <span>Set Password</span>
             </div>
           </div>
         </div>
@@ -387,7 +387,7 @@ export default function TeamRegistration({ onSuccess, onCancel }) {
             ) : (
               <span className="flex items-center justify-center gap-2">
                 <ShieldCheck className="w-4 h-4" />
-                <span>Proceed to Step 2: Verification</span>
+                <span>Proceed to Verification</span>
               </span>
             )}
           </button>
@@ -644,12 +644,12 @@ export default function TeamRegistration({ onSuccess, onCancel }) {
             {loading ? (
               <span className="flex items-center justify-center gap-2">
                 <RefreshCw className="w-4 h-4 animate-spin" />
-                <span>Creating Team & Generating Credentials...</span>
+                <span>Team Creating...</span>
               </span>
             ) : (
               <span className="flex items-center justify-center gap-2">
                 <Sparkles className="w-4 h-4" />
-                <span>Complete Registration & Create Team</span>
+                <span>Team Created</span>
               </span>
             )}
           </button>
@@ -712,7 +712,7 @@ export default function TeamRegistration({ onSuccess, onCancel }) {
             className="w-full py-3.5 px-6 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold rounded-xl text-sm transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 cursor-pointer"
           >
             <KeyRound className="w-4 h-4" />
-            <span>Go to Team Admin Login</span>
+            <span>Go to Login</span>
           </button>
         </div>
       )}

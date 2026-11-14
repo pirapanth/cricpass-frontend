@@ -1,16 +1,39 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Building, ChevronDown, Check, Search, RefreshCw, AlertCircle } from 'lucide-react';
+import { Building, ChevronDown, Check, Search, RefreshCw, AlertCircle, X } from 'lucide-react';
 
 /**
- * Custom styled dark-theme Team Select Dropdown matching CricPass UI.
- * Guards against non-array teams, supports disabled entries, empty/free-agent option,
- * quick filtering for long lists, and retry controls during Render cold starts.
+ * Helper to highlight matching query text in team names/IDs
+ */
+function highlightMatch(text, query) {
+  if (!query || !query.trim() || !text) return text;
+  const trimmed = query.trim();
+  const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const parts = String(text).split(new RegExp(`(${escaped})`, 'gi'));
+  return parts.map((part, index) =>
+    part.toLowerCase() === trimmed.toLowerCase() ? (
+      <span key={index} className="bg-emerald-500/30 text-emerald-200 font-bold px-0.5 rounded">
+        {part}
+      </span>
+    ) : (
+      part
+    )
+  );
+}
+
+/**
+ * Custom styled dark-theme Team Select Dropdown with integrated Search Bar.
+ * - Always includes a dedicated search option at the top of the dropdown menu
+ * - Automatically filters teams in real time (e.g. typing "uthaya" filters "uthayasooryan", "uthayam", "uthayatharagai")
+ * - Highlights search matches visually
+ * - Supports keyboard navigation (ArrowUp, ArrowDown, Enter, Escape)
+ * - Supports Render cold-start retry handling and empty option ("Free Agent" / "Clear Selection")
  */
 export default function TeamSelectDropdown({
   teams = [],
   value = '',
   onChange,
   placeholder = '-- Select Club / Team --',
+  searchPlaceholder = 'Search team name or ID...',
   emptyOptionLabel = '',
   disabledTeamId = '',
   disabledBadgeText = 'Current',
@@ -19,12 +42,15 @@ export default function TeamSelectDropdown({
   onRetry = null,
   showLeftIcon = false,
   disabled = false,
+  searchable = true,
   id,
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const containerRef = useRef(null);
   const searchInputRef = useRef(null);
+  const listRef = useRef(null);
 
   const safeTeams = Array.isArray(teams) ? teams : [];
 
@@ -32,15 +58,14 @@ export default function TeamSelectDropdown({
     (t) => t?._id === value || (value && t?.team_id === value)
   );
 
-  const filteredTeams = searchQuery.trim()
-    ? safeTeams.filter((t) => {
-        const q = searchQuery.trim().toLowerCase();
-        return (
-          String(t?.team_name || '').toLowerCase().includes(q) ||
-          String(t?.team_id || '').toLowerCase().includes(q)
-        );
-      })
-    : safeTeams;
+  // Real-time multi-token filter for team names and team IDs
+  const filteredTeams = safeTeams.filter((t) => {
+    if (!searchQuery.trim()) return true;
+    const tokens = searchQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const teamName = String(t?.team_name || '').toLowerCase();
+    const teamId = String(t?.team_id || '').toLowerCase();
+    return tokens.every((tok) => teamName.includes(tok) || teamId.includes(tok));
+  });
 
   // Close dropdown on outside click or Escape key
   useEffect(() => {
@@ -52,7 +77,7 @@ export default function TeamSelectDropdown({
       }
     };
 
-    const handleKeyDown = (event) => {
+    const handleGlobalKeyDown = (event) => {
       if (event.key === 'Escape') {
         setIsOpen(false);
       }
@@ -60,25 +85,30 @@ export default function TeamSelectDropdown({
 
     document.addEventListener('mousedown', handleClickOutside);
     document.addEventListener('touchstart', handleClickOutside);
-    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('keydown', handleGlobalKeyDown);
 
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('touchstart', handleClickOutside);
-      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('keydown', handleGlobalKeyDown);
     };
   }, [isOpen]);
 
-  // Focus search bar when opening longer club lists
+  // Auto-focus the search bar immediately when the dropdown opens
   useEffect(() => {
-    if (isOpen && safeTeams.length > 6 && searchInputRef.current) {
+    if (isOpen && searchable && searchInputRef.current) {
       const timer = setTimeout(() => {
         searchInputRef.current?.focus();
-      }, 40);
+      }, 50);
       return () => clearTimeout(timer);
     }
     return undefined;
-  }, [isOpen, safeTeams.length]);
+  }, [isOpen, searchable]);
+
+  // Reset highlighted item when search query or open state changes
+  useEffect(() => {
+    setHighlightedIndex(-1);
+  }, [searchQuery, isOpen]);
 
   const handleToggle = () => {
     if (disabled) return;
@@ -94,6 +124,37 @@ export default function TeamSelectDropdown({
     setSearchQuery('');
     if (onChange) {
       onChange(nextValue);
+    }
+  };
+
+  const handleSearchKeyDown = (e) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlightedIndex((prev) =>
+        prev < filteredTeams.length - 1 ? prev + 1 : prev
+      );
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlightedIndex((prev) => (prev > 0 ? prev - 1 : -1));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (highlightedIndex >= 0 && filteredTeams[highlightedIndex]) {
+        const target = filteredTeams[highlightedIndex];
+        if (!disabledTeamId || target._id !== disabledTeamId) {
+          handleSelect(target._id);
+        }
+      } else if (filteredTeams.length === 1) {
+        const target = filteredTeams[0];
+        if (!disabledTeamId || target._id !== disabledTeamId) {
+          handleSelect(target._id);
+        }
+      }
+    } else if (e.key === 'Escape') {
+      if (searchQuery) {
+        setSearchQuery('');
+      } else {
+        setIsOpen(false);
+      }
     }
   };
 
@@ -116,7 +177,7 @@ export default function TeamSelectDropdown({
         aria-haspopup="listbox"
         className={`w-full ${showLeftIcon ? 'pl-10' : 'pl-4'} pr-3.5 py-3 bg-slate-900 border rounded-xl text-left text-sm transition-all flex items-center justify-between gap-2 cursor-pointer focus:outline-none ${
           isOpen
-            ? 'border-emerald-500 ring-2 ring-emerald-500/40'
+            ? 'border-emerald-500 ring-2 ring-emerald-500/40 shadow-lg shadow-emerald-500/10'
             : 'border-slate-700 hover:border-slate-600 focus:ring-2 focus:ring-emerald-500'
         } ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}
       >
@@ -159,28 +220,65 @@ export default function TeamSelectDropdown({
       {isOpen && (
         <div
           role="listbox"
-          className="absolute left-0 right-0 mt-2 bg-slate-900/98 border border-slate-700 rounded-xl shadow-2xl shadow-black/70 z-40 overflow-hidden backdrop-blur-md animate-fadeIn"
+          className="absolute left-0 right-0 mt-2 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl shadow-black/80 z-50 overflow-hidden backdrop-blur-md animate-fadeIn"
         >
-          {/* Optional Search Input for larger club rosters */}
-          {safeTeams.length > 6 && (
-            <div className="p-2 border-b border-slate-800 bg-slate-950/60">
-              <div className="relative">
-                <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+          {/* Always Visible Search Bar */}
+          {searchable && (
+            <div className="p-2.5 border-b border-slate-800 bg-slate-950/90 sticky top-0 z-10 backdrop-blur-sm">
+              <div className="relative flex items-center">
+                <Search className="w-4 h-4 text-emerald-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   ref={searchInputRef}
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Filter by team name or ID..."
-                  className="w-full pl-8 pr-3 py-1.5 bg-slate-900 border border-slate-700/80 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                  onKeyDown={handleSearchKeyDown}
+                  placeholder={searchPlaceholder}
+                  className="w-full pl-9 pr-8 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors"
+                  autoComplete="off"
+                  spellCheck="false"
                 />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSearchQuery('');
+                      searchInputRef.current?.focus();
+                    }}
+                    className="absolute right-2.5 p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                    title="Clear search"
+                    aria-label="Clear search"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
+
+              {/* Live search stats indicator */}
+              {searchQuery.trim() && (
+                <div className="mt-1.5 px-1 flex items-center justify-between text-[11px] text-slate-400">
+                  <span>
+                    Found <strong className="text-emerald-400">{filteredTeams.length}</strong> matching {filteredTeams.length === 1 ? 'team' : 'teams'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSearchQuery('');
+                    }}
+                    className="text-xs text-slate-400 hover:text-white underline cursor-pointer"
+                  >
+                    Reset
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
-          <div className="max-h-60 overflow-y-auto py-1 divide-y divide-slate-800/40">
+          <div ref={listRef} className="max-h-64 overflow-y-auto py-1 divide-y divide-slate-800/40">
             {/* Optional Empty / Free-Agent Choice */}
-            {emptyOptionLabel && (
+            {emptyOptionLabel && !searchQuery.trim() && (
               <button
                 type="button"
                 role="option"
@@ -207,9 +305,10 @@ export default function TeamSelectDropdown({
 
             {/* Teams Options */}
             {Array.isArray(filteredTeams) &&
-              filteredTeams.map((t) => {
+              filteredTeams.map((t, idx) => {
                 const isSelected = t._id === value || (value && t.team_id === value);
                 const isDisabled = Boolean(disabledTeamId && t._id === disabledTeamId);
+                const isHighlighted = idx === highlightedIndex;
 
                 return (
                   <button
@@ -222,15 +321,19 @@ export default function TeamSelectDropdown({
                     className={`w-full px-3.5 py-2.5 text-left text-xs sm:text-sm flex items-center justify-between gap-2 transition-colors ${
                       isDisabled
                         ? 'opacity-45 cursor-not-allowed bg-slate-900/50 text-slate-500'
-                        : isSelected
-                          ? 'bg-emerald-500/15 text-white font-semibold cursor-pointer'
-                          : 'text-slate-200 hover:bg-slate-800/90 hover:text-white cursor-pointer'
+                        : isHighlighted
+                          ? 'bg-slate-800 text-white cursor-pointer ring-1 ring-inset ring-emerald-500/50'
+                          : isSelected
+                            ? 'bg-emerald-500/15 text-white font-semibold cursor-pointer'
+                            : 'text-slate-200 hover:bg-slate-800/90 hover:text-white cursor-pointer'
                     }`}
                   >
                     <div className="min-w-0 flex items-center gap-2">
-                      <span className="truncate">{t.team_name}</span>
+                      <span className="truncate">
+                        {highlightMatch(t.team_name, searchQuery)}
+                      </span>
                       <span className="shrink-0 px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-cyan-300 font-mono text-[10px] font-bold">
-                        {t.team_id}
+                        {highlightMatch(t.team_id, searchQuery)}
                       </span>
                     </div>
 
@@ -248,9 +351,9 @@ export default function TeamSelectDropdown({
                 );
               })}
 
-            {/* No Filter Match or Empty List */}
+            {/* No Filter Match State */}
             {!loading && filteredTeams.length === 0 && (
-              <div className="px-4 py-4 text-center space-y-2">
+              <div className="px-4 py-6 text-center space-y-2">
                 {error ? (
                   <>
                     <div className="flex items-center justify-center gap-1.5 text-xs text-rose-400">
@@ -272,11 +375,26 @@ export default function TeamSelectDropdown({
                     )}
                   </>
                 ) : (
-                  <p className="text-xs text-slate-400">
-                    {searchQuery.trim()
-                      ? `No clubs found matching "${searchQuery}"`
-                      : 'No registered clubs found in database.'}
-                  </p>
+                  <>
+                    <Search className="w-6 h-6 text-slate-500 mx-auto opacity-50" />
+                    <p className="text-xs text-slate-300 font-medium">
+                      {searchQuery.trim()
+                        ? `No clubs found matching "${searchQuery}"`
+                        : 'No registered clubs found in database.'}
+                    </p>
+                    {searchQuery.trim() && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSearchQuery('');
+                          searchInputRef.current?.focus();
+                        }}
+                        className="text-[11px] text-emerald-400 hover:text-emerald-300 underline font-semibold cursor-pointer"
+                      >
+                        Clear search
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
             )}
