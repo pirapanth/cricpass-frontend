@@ -13,9 +13,10 @@ import {
   KeyRound,
   ShieldCheck,
   Send,
-  MessageSquare
+  MessageSquare,
+  ExternalLink
 } from 'lucide-react';
-import { registerPlayer, sendWhatsAppOTP, verifyWhatsAppOTP } from '../api';
+import { registerPlayer, sendWhatsAppOTP, verifyWhatsAppOTP, uploadAttachment } from '../api';
 import useTeams from '../hooks/useTeams';
 import TeamSelectDropdown from './TeamSelectDropdown';
 import LoadingPopup from './LoadingPopup';
@@ -26,6 +27,11 @@ import {
   formatDisplayPhone,
   maskDisplayPhone,
 } from '../utils/phoneUtils';
+import {
+  formatDriveImageUrl,
+  isDriveUrl,
+  getDriveViewUrl
+} from '../utils/imageUtils';
 
 export default function PlayerRegister({ onPlayerRegistered }) {
   const {
@@ -49,6 +55,8 @@ export default function PlayerRegister({ onPlayerRegistered }) {
   // Local image file upload state
   const [selectedFileName, setSelectedFileName] = useState('');
   const [imagePreview, setImagePreview] = useState(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [uploadError, setUploadError] = useState(null);
   const fileInputRef = useRef(null);
 
   // Email OTP state for Team Admin approval
@@ -91,8 +99,8 @@ export default function PlayerRegister({ onPlayerRegistered }) {
     }
   };
 
-  // Handle local image selection from File Manager
-  const handleImageFileChange = (e) => {
+  // Handle local image selection from File Manager and upload directly to Google Drive
+  const handleImageFileChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -101,29 +109,61 @@ export default function PlayerRegister({ onPlayerRegistered }) {
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      setError('Selected image is too large. Please select an image under 5MB.');
+    if (file.size > 10 * 1024 * 1024) {
+      setError('Selected image is too large. Please select an image under 10MB.');
       return;
     }
 
     setError(null);
+    setUploadError(null);
     setSelectedFileName(file.name);
 
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const base64String = reader.result;
-      setImagePreview(base64String);
-      setFormData((prev) => ({
-        ...prev,
-        image_url: base64String
-      }));
-    };
-    reader.readAsDataURL(file);
+    // Instant local preview for immediate responsive UI feedback
+    const localBlob = URL.createObjectURL(file);
+    setImagePreview(localBlob);
+
+    // Upload to Google Drive via backend POST /api/upload
+    setUploadingImage(true);
+    try {
+      const uploadRes = await uploadAttachment(
+        file,
+        formData.current_team_id || formData.nic_number || 'PlayerPhoto'
+      );
+
+      if (uploadRes?.success && uploadRes?.data?.viewUrl) {
+        // Store ONLY the returned Google Drive viewUrl string in state (never giant Base64)
+        setFormData((prev) => ({
+          ...prev,
+          image_url: uploadRes.data.viewUrl
+        }));
+      } else {
+        throw new Error(uploadRes?.error || 'Failed to upload photo to Google Drive');
+      }
+    } catch (err) {
+      console.error('Player photo upload error:', err);
+      const errMsg =
+        err.response?.data?.error ||
+        err.message ||
+        'Failed to upload image to Google Drive. Please try again.';
+      setUploadError(errMsg);
+      setError(`Image Upload Error: ${errMsg}`);
+      // Revert preview on upload failure
+      if (localBlob) URL.revokeObjectURL(localBlob);
+      setImagePreview(null);
+      setFormData((prev) => ({ ...prev, image_url: '' }));
+      setSelectedFileName('');
+    } finally {
+      setUploadingImage(false);
+    }
   };
 
   const handleRemoveImage = () => {
+    if (imagePreview && imagePreview.startsWith('blob:')) {
+      URL.revokeObjectURL(imagePreview);
+    }
     setSelectedFileName('');
     setImagePreview(null);
+    setUploadError(null);
     setFormData((prev) => ({ ...prev, image_url: '' }));
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -199,6 +239,11 @@ export default function PlayerRegister({ onPlayerRegistered }) {
     e.preventDefault();
     setError(null);
 
+    if (uploadingImage) {
+      setError('Please wait for the player photo to finish uploading to Google Drive.');
+      return;
+    }
+
     if (!formData.full_name.trim()) {
       setError('Full Name is required');
       return;
@@ -254,6 +299,8 @@ export default function PlayerRegister({ onPlayerRegistered }) {
       current_team_id: ''
     });
     handleRemoveImage();
+    setUploadingImage(false);
+    setUploadError(null);
     setOtpSent(false);
     setOtpVerified(false);
     setOtpCode('');
@@ -298,11 +345,28 @@ export default function PlayerRegister({ onPlayerRegistered }) {
         <div className="bg-gradient-to-br from-emerald-950/90 via-slate-900 to-teal-950/90 border border-emerald-500/40 rounded-2xl p-6 sm:p-8 shadow-2xl space-y-6 animate-fadeIn">
           <div className="flex items-center gap-4">
             {successData.image_url ? (
-              <img
-                src={successData.image_url}
-                alt={successData.full_name}
-                className="w-16 h-16 rounded-2xl object-cover border-2 border-emerald-500 shadow-md"
-              />
+              <div className="relative group">
+                <img
+                  src={formatDriveImageUrl(successData.image_url)}
+                  alt={successData.full_name}
+                  className="w-16 h-16 rounded-2xl object-cover border-2 border-emerald-500 shadow-md"
+                  onError={(e) => {
+                    e.target.onerror = null;
+                    e.target.src = 'https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?w=150&auto=format&fit=crop&q=80';
+                  }}
+                />
+                {isDriveUrl(successData.image_url) && (
+                  <a
+                    href={getDriveViewUrl(successData.image_url)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="absolute -bottom-1 -right-1 p-1 bg-slate-900 border border-emerald-500/50 rounded-lg text-emerald-400 hover:text-emerald-300 shadow transition-colors"
+                    title="View Original on Google Drive"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                )}
+              </div>
             ) : (
               <div className="w-16 h-16 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shadow-lg">
                 <CheckCircle className="w-8 h-8 text-emerald-400" />
@@ -574,9 +638,17 @@ export default function PlayerRegister({ onPlayerRegistered }) {
 
             {/* File Manager Image Picker */}
             <div className="sm:col-span-2 space-y-2">
-              <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
-                Player Photo (Select from Computer / File Manager)
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
+                  Player Photo (Google Drive Cloud Storage)
+                </label>
+                {formData.image_url && !uploadingImage && (
+                  <span className="text-[11px] text-emerald-400 font-semibold flex items-center gap-1">
+                    <CheckCircle className="w-3.5 h-3.5" />
+                    Uploaded to Drive
+                  </span>
+                )}
+              </div>
 
               {/* Hidden native file input */}
               <input
@@ -585,9 +657,22 @@ export default function PlayerRegister({ onPlayerRegistered }) {
                 onChange={handleImageFileChange}
                 accept="image/*"
                 className="hidden"
+                disabled={uploadingImage}
               />
 
-              {!imagePreview ? (
+              {/* Uploading Spinner Box */}
+              {uploadingImage ? (
+                <div className="p-6 rounded-2xl bg-slate-900/90 border border-emerald-500/50 flex flex-col items-center justify-center space-y-3 animate-fadeIn shadow-lg shadow-emerald-500/10">
+                  <div className="relative">
+                    <RefreshCw className="w-8 h-8 text-emerald-400 animate-spin" />
+                    <div className="absolute inset-0 blur-md bg-emerald-500/20 -z-10 rounded-full" />
+                  </div>
+                  <div className="text-center space-y-1">
+                    <p className="text-sm font-semibold text-white">Uploading image to Google Drive...</p>
+                    <p className="text-xs text-slate-400">Storing photo securely on Google Drive</p>
+                  </div>
+                </div>
+              ) : !imagePreview ? (
                 /* Clickable File Drop Box */
                 <div
                   onClick={() => fileInputRef.current?.click()}
@@ -600,25 +685,49 @@ export default function PlayerRegister({ onPlayerRegistered }) {
                     Click to select player photo from File Manager
                   </h4>
                   <p className="text-xs text-slate-500 mt-1">
-                    Supports JPG, PNG, WEBP (Max 5MB)
+                    Supports JPG, PNG, WEBP (Max 10MB) • Uploads directly to Google Drive
                   </p>
                 </div>
               ) : (
                 /* Selected Image Preview Thumbnail */
                 <div className="p-4 rounded-xl bg-slate-900/90 border border-emerald-500/40 flex items-center justify-between gap-4 animate-fadeIn">
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
                     <img
-                      src={imagePreview}
+                      src={formatDriveImageUrl(imagePreview || formData.image_url)}
                       alt="Player Preview"
-                      className="w-14 h-14 rounded-xl object-cover border-2 border-emerald-500 shadow-md"
+                      className="w-14 h-14 rounded-xl object-cover border-2 border-emerald-500 shadow-md shrink-0"
+                      onError={(e) => {
+                        if (imagePreview && !imagePreview.startsWith('blob:')) {
+                          e.target.onerror = null;
+                          e.target.src = 'https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?w=150&auto=format&fit=crop&q=80';
+                        }
+                      }}
                     />
-                    <div>
-                      <span className="text-[11px] text-emerald-400 font-medium">Image loaded ready for upload</span>
+                    <div className="min-w-0">
                       <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-white truncate max-w-[180px] sm:max-w-xs">
+                          {selectedFileName || 'Player Photo'}
+                        </span>
+                        <span className="shrink-0 px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 text-[10px] font-bold border border-emerald-500/30">
+                          Google Drive
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 mt-1.5">
+                        {formData.image_url && isDriveUrl(formData.image_url) && (
+                          <a
+                            href={getDriveViewUrl(formData.image_url)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-[11px] text-emerald-400 hover:text-emerald-300 font-medium underline"
+                          >
+                            <span>View on Drive</span>
+                            <ExternalLink className="w-3 h-3" />
+                          </a>
+                        )}
                         <button
                           type="button"
                           onClick={() => fileInputRef.current?.click()}
-                          className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold border border-slate-700 transition-colors cursor-pointer"
+                          className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold border border-slate-700 transition-colors cursor-pointer"
                         >
                           Change
                         </button>
@@ -633,8 +742,13 @@ export default function PlayerRegister({ onPlayerRegistered }) {
                       </div>
                     </div>
                   </div>
+                </div>
+              )}
 
-                  
+              {uploadError && (
+                <div className="p-3 rounded-xl bg-rose-950/60 border border-rose-800/40 text-rose-300 text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                  <span>{uploadError}</span>
                 </div>
               )}
             </div>
@@ -643,13 +757,18 @@ export default function PlayerRegister({ onPlayerRegistered }) {
           <div className="pt-4 border-t border-slate-700">
             <button
               type="submit"
-              disabled={loading || (Boolean(formData.current_team_id) && !otpVerified)}
+              disabled={loading || uploadingImage || (Boolean(formData.current_team_id) && !otpVerified)}
               className="w-full flex items-center justify-center gap-2 py-3.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-extrabold rounded-xl shadow-lg shadow-emerald-600/30 text-sm sm:text-base transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin" />
                   <span>Saving Player...</span>
+                </>
+              ) : uploadingImage ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <span>Uploading image to Google Drive...</span>
                 </>
               ) : formData.current_team_id && !otpVerified ? (
                 <span className="flex items-center gap-2">

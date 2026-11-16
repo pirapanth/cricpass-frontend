@@ -9,9 +9,15 @@ import {
   Shield,
   Calendar,
   Building2,
-  RefreshCw
+  RefreshCw,
+  ExternalLink
 } from 'lucide-react';
 import { searchPlayerByNIC } from '../api';
+import {
+  formatDriveImageUrl,
+  isDriveUrl,
+  getDriveViewUrl
+} from '../utils/imageUtils';
 
 export default function PlayerSearch() {
   const [nic, setNic] = useState('');
@@ -169,7 +175,7 @@ export default function PlayerSearch() {
               <div className="relative mb-4">
                 {player.image_url ? (
                   <img
-                    src={player.image_url}
+                    src={formatDriveImageUrl(player.image_url)}
                     alt={player.full_name}
                     className="w-28 h-28 rounded-2xl object-cover border-2 border-emerald-500/40 shadow-lg"
                     onError={(e) => {
@@ -188,6 +194,18 @@ export default function PlayerSearch() {
                   <Shield className="w-4 h-4" />
                 </div>
               </div>
+
+              {player.image_url && isDriveUrl(player.image_url) && (
+                <a
+                  href={getDriveViewUrl(player.image_url)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mb-2 inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-400 hover:text-emerald-300 transition-colors"
+                >
+                  <span>Google Drive Photo</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              )}
 
               <h2 className="text-xl font-bold text-white tracking-tight">{player.full_name}</h2>
               <p className="text-xs font-mono text-emerald-400 mt-1 font-semibold">NIC: {player.nic_number}</p>

@@ -52,10 +52,12 @@ import {
   verifyWhatsAppOTP,
   changeTeamPassword,
   changeTeamEmail,
-  lookupTeamsByPhone
+  lookupTeamsByPhone,
+  uploadAttachment
 } from '../api';
 import useTeams from '../hooks/useTeams';
 import TeamRegistration from './TeamRegistration';
+import BulkPlayerRegistration from './BulkPlayerRegistration';
 import {
   handlePlus94PhoneInput,
   handlePlus94KeyDown,
@@ -63,6 +65,11 @@ import {
   formatDisplayPhone,
   maskDisplayPhone
 } from '../utils/phoneUtils';
+import {
+  formatDriveImageUrl,
+  isDriveUrl,
+  getDriveViewUrl
+} from '../utils/imageUtils';
 
 const ADMIN_WHATSAPP_NUMBER =
   import.meta.env.VITE_ADMIN_WHATSAPP_NUMBER || '94726589947';
@@ -199,6 +206,18 @@ export default function TeamAdminPortal() {
   const [forgotUpdating, setForgotUpdating] = useState(false);
   const [forgotError, setForgotError] = useState(null);
   const [forgotSuccess, setForgotSuccess] = useState(null);
+
+  // Bulk Player Registration & WhatsApp OTP Gate State
+  const [showBulkOtpModal, setShowBulkOtpModal] = useState(false);
+  const [bulkAdminPhone, setBulkAdminPhone] = useState('+94');
+  const [bulkOtpSent, setBulkOtpSent] = useState(false);
+  const [bulkOtpSending, setBulkOtpSending] = useState(false);
+  const [bulkOtpCode, setBulkOtpCode] = useState('');
+  const [bulkOtpVerifying, setBulkOtpVerifying] = useState(false);
+  const [bulkOtpError, setBulkOtpError] = useState(null);
+  const [bulkOtpSuccess, setBulkOtpSuccess] = useState(null);
+  const [isBulkViewActive, setIsBulkViewActive] = useState(false);
+  const [verifiedBulkPhone, setVerifiedBulkPhone] = useState('');
 
   const loadMasterAdminOverview = async () => {
     setLoadingOverview(true);
@@ -501,7 +520,7 @@ export default function TeamAdminPortal() {
   // -------------------------------------------------------------
   // Register New Team Flow
   // -------------------------------------------------------------
-  const handleTeamLogoFileChange = (e) => {
+  const handleTeamLogoFileChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -510,12 +529,29 @@ export default function TeamAdminPortal() {
       return;
     }
 
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setTeamLogoPreview(reader.result);
-      setNewTeamData((prev) => ({ ...prev, image_url: reader.result }));
-    };
-    reader.readAsDataURL(file);
+    if (file.size > 10 * 1024 * 1024) {
+      setRegisterTeamError('Selected image is too large. Max 10MB.');
+      return;
+    }
+
+    setRegisterTeamError(null);
+    const localPreview = URL.createObjectURL(file);
+    setTeamLogoPreview(localPreview);
+
+    try {
+      const uploadRes = await uploadAttachment(file, newTeamData.team_name || 'TeamLogo');
+      if (uploadRes?.success && uploadRes?.data?.viewUrl) {
+        setNewTeamData((prev) => ({ ...prev, image_url: uploadRes.data.viewUrl }));
+      } else {
+        throw new Error(uploadRes?.error || 'Failed to upload team logo');
+      }
+    } catch (err) {
+      console.error('Logo upload error:', err);
+      setRegisterTeamError(err.response?.data?.error || err.message || 'Error uploading team logo to Google Drive');
+      if (localPreview) URL.revokeObjectURL(localPreview);
+      setTeamLogoPreview(null);
+      setNewTeamData((prev) => ({ ...prev, image_url: '' }));
+    }
   };
 
   const handleRegisterTeamSubmit = async (e) => {
@@ -749,6 +785,72 @@ export default function TeamAdminPortal() {
       setModalError(err.message || 'Invalid new phone OTP');
     } finally {
       setModalLoading(false);
+    }
+  };
+
+  // -------------------------------------------------------------
+  // Bulk Player Registration WhatsApp OTP Gate Handlers
+  // -------------------------------------------------------------
+  const openBulkRegistrationModal = () => {
+    const defaultPhone = authenticatedTeam?.phone_number || '+94';
+    setBulkAdminPhone(defaultPhone);
+    setBulkOtpSent(false);
+    setBulkOtpSending(false);
+    setBulkOtpCode('');
+    setBulkOtpVerifying(false);
+    setBulkOtpError(null);
+    setBulkOtpSuccess(null);
+    setShowBulkOtpModal(true);
+  };
+
+  const closeBulkRegistrationModal = () => {
+    setShowBulkOtpModal(false);
+    setBulkOtpError(null);
+    setBulkOtpSuccess(null);
+  };
+
+  const handleSendBulkOtp = async () => {
+    const targetPhone = bulkAdminPhone.trim();
+    if (!targetPhone || !isValidPlus94Phone(targetPhone)) {
+      setBulkOtpError('Please enter a valid WhatsApp number starting with +94 followed by 9 digits');
+      return;
+    }
+    setBulkOtpSending(true);
+    setBulkOtpError(null);
+    setBulkOtpSuccess(null);
+    try {
+      await sendWhatsAppOTP(targetPhone, 'Bulk Player Registration Authorization');
+      setBulkOtpSent(true);
+      setBulkOtpSuccess(`OTP sent to WhatsApp: ${targetPhone}`);
+    } catch (err) {
+      setBulkOtpError(err.message || 'Failed to dispatch WhatsApp OTP');
+    } finally {
+      setBulkOtpSending(false);
+    }
+  };
+
+  const handleVerifyBulkOtp = async (e) => {
+    if (e) e.preventDefault();
+    const targetPhone = bulkAdminPhone.trim();
+    if (!bulkOtpCode.trim()) {
+      setBulkOtpError('Please enter the 6-digit OTP code');
+      return;
+    }
+    setBulkOtpVerifying(true);
+    setBulkOtpError(null);
+    try {
+      const res = await verifyWhatsAppOTP(targetPhone, bulkOtpCode.trim());
+      if (res?.success) {
+        setVerifiedBulkPhone(targetPhone);
+        setShowBulkOtpModal(false);
+        setIsBulkViewActive(true);
+      } else {
+        throw new Error(res?.message || 'Invalid or expired OTP code');
+      }
+    } catch (err) {
+      setBulkOtpError(err.message || 'Invalid or expired WhatsApp OTP');
+    } finally {
+      setBulkOtpVerifying(false);
     }
   };
 
@@ -1874,7 +1976,35 @@ export default function TeamAdminPortal() {
       {/* ============================================================== */}
       {/* 3. AUTHENTICATED AS: CLUB TEAM ADMIN                           */}
       {/* ============================================================== */}
-      {userRole === 'TEAM_ADMIN' && authenticatedTeam && (
+      {userRole === 'TEAM_ADMIN' && authenticatedTeam && isBulkViewActive && (
+        <BulkPlayerRegistration
+          team={authenticatedTeam}
+          adminPhone={verifiedBulkPhone || authenticatedTeam.phone_number}
+          onBack={async () => {
+            setIsBulkViewActive(false);
+            if (authenticatedTeam?._id) {
+              const fresh = await getTeamById(authenticatedTeam._id);
+              if (fresh?.data) {
+                setAuthenticatedTeam(fresh.data.team);
+                setTeamRoster(fresh.data.players || []);
+              }
+            }
+            fetchTeams();
+          }}
+          onRegistrationComplete={async () => {
+            if (authenticatedTeam?._id) {
+              const fresh = await getTeamById(authenticatedTeam._id);
+              if (fresh?.data) {
+                setAuthenticatedTeam(fresh.data.team);
+                setTeamRoster(fresh.data.players || []);
+              }
+            }
+            fetchTeams();
+          }}
+        />
+      )}
+
+      {userRole === 'TEAM_ADMIN' && authenticatedTeam && !isBulkViewActive && (
         <div className="space-y-6 animate-fadeIn">
           {/* Admin Header Card */}
           <div className="bg-slate-800/90 border border-slate-700 rounded-2xl p-6 sm:p-8 shadow-xl backdrop-blur-sm">
@@ -1882,9 +2012,13 @@ export default function TeamAdminPortal() {
               <div className="flex items-center gap-4">
                 {authenticatedTeam.image_url ? (
                   <img
-                    src={authenticatedTeam.image_url}
+                    src={formatDriveImageUrl(authenticatedTeam.image_url)}
                     alt={authenticatedTeam.team_name}
                     className="w-16 h-16 rounded-2xl object-cover border-2 border-cyan-500 shadow-md"
+                    onError={(e) => {
+                      e.target.onerror = null;
+                      e.target.src = 'https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?w=150&auto=format&fit=crop&q=80';
+                    }}
                   />
                 ) : (
                   <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-cyan-600 to-teal-400 border border-cyan-400/40 flex items-center justify-center text-white shadow-lg text-2xl font-bold">
@@ -1909,6 +2043,16 @@ export default function TeamAdminPortal() {
 
               {/* Action Buttons */}
               <div className="flex flex-wrap items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={openBulkRegistrationModal}
+                  className="flex items-center gap-1.5 px-3.5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-emerald-600/20 cursor-pointer"
+                  title="Bulk register players with WhatsApp OTP verification"
+                >
+                  <Users className="w-4 h-4" />
+                  <span>Bulk Player Register</span>
+                </button>
+
                 <button
                   type="button"
                   onClick={openPasswordModal}
@@ -1948,14 +2092,32 @@ export default function TeamAdminPortal() {
                 <Users className="w-5 h-5 text-cyan-400" />
                 <h3 className="font-bold text-white text-base">Club Player Roster</h3>
               </div>
-              <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-900 border border-slate-700 text-slate-300 font-mono">
-                Players.No: {teamRoster.length} 
-              </span>
+              <div className="flex items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={openBulkRegistrationModal}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                >
+                  <UserPlus className="w-3.5 h-3.5" />
+                  <span>Bulk Register Players</span>
+                </button>
+                <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-900 border border-slate-700 text-slate-300 font-mono">
+                  Players.No: {teamRoster.length} 
+                </span>
+              </div>
             </div>
 
             {teamRoster.length === 0 ? (
-              <div className="text-center py-8 text-slate-400 text-sm">
-                No players currently registered to this team. Use the "Register Player" tab to assign new talent.
+              <div className="text-center py-8 text-slate-400 text-sm space-y-3">
+                <p>No players currently registered to this team. Use "Bulk Player Register" to quickly add your team squad.</p>
+                <button
+                  type="button"
+                  onClick={openBulkRegistrationModal}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                >
+                  <UserPlus className="w-4 h-4" />
+                  <span>Bulk Add Players Now</span>
+                </button>
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -3019,6 +3181,142 @@ export default function TeamAdminPortal() {
                 </button>
               </form>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* MODAL: BULK PLAYER REGISTRATION WHATSAPP OTP VERIFICATION      */}
+      {/* ============================================================== */}
+      {showBulkOtpModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md p-6 sm:p-7 space-y-5 shadow-2xl relative">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                  <Users className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-white text-base">Bulk Registration Access</h3>
+                  <p className="text-xs text-slate-400">Admin WhatsApp OTP Verification</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={closeBulkRegistrationModal}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                aria-label="Close modal"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Error / Success Alerts */}
+            {bulkOtpError && (
+              <div className="p-3 rounded-xl bg-rose-950/60 border border-rose-800/60 text-rose-300 text-xs flex items-center gap-2 animate-fadeIn">
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>{bulkOtpError}</span>
+              </div>
+            )}
+            {bulkOtpSuccess && (
+              <div className="p-3 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-2 animate-fadeIn">
+                <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>{bulkOtpSuccess}</span>
+              </div>
+            )}
+
+            {/* Step 1: Confirm WhatsApp Number */}
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
+                  Admin WhatsApp Number
+                </label>
+                <div className="relative">
+                  <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                  <input
+                    type="text"
+                    value={bulkAdminPhone}
+                    onChange={(e) => setBulkAdminPhone(handlePlus94PhoneInput(e.target.value))}
+                    onKeyDown={handlePlus94KeyDown}
+                    placeholder="+94770000000"
+                    disabled={bulkOtpSent}
+                    className="w-full pl-10 pr-4 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-70"
+                  />
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  A 6-digit authorization code will be sent to this WhatsApp number.
+                </p>
+              </div>
+
+              {!bulkOtpSent ? (
+                <button
+                  type="button"
+                  onClick={handleSendBulkOtp}
+                  disabled={bulkOtpSending || !bulkAdminPhone}
+                  className="w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold rounded-xl text-xs sm:text-sm shadow-md transition-all cursor-pointer disabled:opacity-50"
+                >
+                  {bulkOtpSending ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Sending WhatsApp OTP...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4" />
+                      <span>Send Verification Code via WhatsApp</span>
+                    </>
+                  )}
+                </button>
+              ) : (
+                /* Step 2: Enter OTP */
+                <form onSubmit={handleVerifyBulkOtp} className="space-y-3 pt-2 border-t border-slate-800">
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
+                      Enter 6-Digit WhatsApp OTP
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={6}
+                      value={bulkOtpCode}
+                      onChange={(e) => setBulkOtpCode(e.target.value.trim())}
+                      placeholder="e.g. 123456"
+                      autoFocus
+                      className="w-full px-4 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-center text-lg font-mono tracking-widest text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button
+                      type="submit"
+                      disabled={bulkOtpVerifying || !bulkOtpCode}
+                      className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold rounded-xl text-xs transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      {bulkOtpVerifying ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          <span>Verifying...</span>
+                        </>
+                      ) : (
+                        <>
+                          <ShieldCheck className="w-4 h-4" />
+                          <span>Verify & Proceed to Bulk Register</span>
+                        </>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleSendBulkOtp}
+                      disabled={bulkOtpSending}
+                      className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold border border-slate-700 transition-colors cursor-pointer"
+                    >
+                      Resend
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
           </div>
         </div>
       )}

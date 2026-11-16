@@ -1,13 +1,18 @@
 import axios from 'axios';
 
-// Sanitize base URL: default to local Express in dev (`npm run dev`) and Render in production builds
+// Sanitize base URL: checks VITE_API_BASE_URL, VITE_API_URL, REACT_APP_API_BASE_URL, or local/prod defaults
 const defaultBaseUrl = import.meta.env.DEV
   ? 'http://localhost:5000/api'
   : 'https://cricpass-backend.onrender.com/api';
 
-const rawBaseUrl = (import.meta.env.VITE_API_URL || defaultBaseUrl)
-  .trim()
-  .replace(/\/+$/, '');
+const envBaseUrl =
+  import.meta.env.VITE_API_BASE_URL ||
+  import.meta.env.VITE_API_URL ||
+  (typeof process !== 'undefined' && process.env?.REACT_APP_API_BASE_URL) ||
+  defaultBaseUrl ||
+  'http://localhost:10000/api';
+
+const rawBaseUrl = String(envBaseUrl).trim().replace(/\/+$/, '');
 const API_BASE_URL = rawBaseUrl.endsWith('/api') ? rawBaseUrl : `${rawBaseUrl}/api`;
 
 console.log('[API Config] Initialized Axios client:', {
@@ -87,6 +92,17 @@ export const searchPlayerByNIC = async (nic) => {
  */
 export const registerPlayer = async (playerData) => {
   const response = await api.post('/players/register', playerData);
+  return response.data;
+};
+
+/**
+ * 2b. Bulk register multiple players
+ */
+export const bulkRegisterPlayers = async ({ players, admin_phone }) => {
+  const response = await api.post('/players/bulk-register', {
+    players,
+    admin_phone
+  });
   return response.data;
 };
 
