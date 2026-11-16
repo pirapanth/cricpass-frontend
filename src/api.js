@@ -405,6 +405,24 @@ export const getTransfers = async (params = {}) => {
   return response.data;
 };
 
+/**
+ * 17. Upload File / Attachment to Google Drive
+ */
+export const uploadAttachment = async (file, teamId = 'General') => {
+  const formData = new FormData();
+  formData.append('file', file);
+  if (teamId) {
+    formData.append('teamId', teamId);
+  }
+
+  const response = await api.post('/upload', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+  return response.data;
+};
+
 export const checkHealth = async () => {
   const response = await api.get('/health');
   return response.data;
