@@ -35,7 +35,8 @@ import {
   MessageSquare,
   Copy,
   Check,
-  ExternalLink
+  ExternalLink,
+  UserPlus
 } from 'lucide-react';
 import {
   registerTeam,
@@ -2013,7 +2014,7 @@ export default function TeamAdminPortal() {
                 {authenticatedTeam.image_url ? (
                   <img
                     src={formatDriveImageUrl(authenticatedTeam.image_url)}
-                    alt={authenticatedTeam.team_name}
+                    alt={authenticatedTeam.team_name || authenticatedTeam.teamName || 'Team Logo'}
                     className="w-16 h-16 rounded-2xl object-cover border-2 border-cyan-500 shadow-md"
                     onError={(e) => {
                       e.target.onerror = null;
@@ -2022,7 +2023,7 @@ export default function TeamAdminPortal() {
                   />
                 ) : (
                   <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-cyan-600 to-teal-400 border border-cyan-400/40 flex items-center justify-center text-white shadow-lg text-2xl font-bold">
-                    {authenticatedTeam.team_name.charAt(0)}
+                    {(authenticatedTeam.team_name || authenticatedTeam.teamName || 'T').charAt(0).toUpperCase()}
                   </div>
                 )}
                 <div>
