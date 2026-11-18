@@ -44,7 +44,7 @@ export default function BulkPlayerRegistration({
 
   // Clear all staged players
   const handleClearAll = () => {
-    if (window.confirm('Are you sure you want to clear all staged players from this batch?')) {
+    if (window.confirm('Are you sure you want to clear all saved players from this batch?')) {
       setStagedPlayers([]);
       setError(null);
     }
@@ -84,7 +84,7 @@ export default function BulkPlayerRegistration({
       const errMsg =
         err.response?.data?.message ||
         err.message ||
-        'Failed to register staged players. Please try again.';
+        'Failed to register saved players. Please try again.';
       setError(errMsg);
     } finally {
       setSubmitting(false);
@@ -104,17 +104,13 @@ export default function BulkPlayerRegistration({
             className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-xs font-semibold border border-slate-700 transition-colors cursor-pointer"
           >
             <ArrowLeft className="w-4 h-4" />
-            <span>Back to Team Portal</span>
           </button>
           <div>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight flex items-center gap-2">
               <span>Bulk Player Registration</span>
-              <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-mono font-bold">
-                Batch Mode
-              </span>
             </h1>
             <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
-              Stage multiple players and enroll them into CricPass simultaneously.
+              Register multiple players and enroll them into CricPass simultaneously.
             </p>
           </div>
         </div>
@@ -145,14 +141,11 @@ export default function BulkPlayerRegistration({
               <CheckCircle2 className="w-6 h-6" />
             </div>
             <div>
-              <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-bold uppercase tracking-wider">
-                Batch Committed
-              </span>
               <h3 className="text-xl font-bold text-white mt-0.5">
                 {successResult.count} Player(s) Successfully Registered!
               </h3>
               <p className="text-xs text-slate-300 mt-1">
-                A single consolidated notification has been sent to your registered WhatsApp number{' '}
+                Regsiter notification has been sent to your admin's WhatsApp number{' '}
                 <strong className="text-emerald-300 font-mono">{formatDisplayPhone(adminPhone || team?.phone_number)}</strong>.
               </p>
             </div>
@@ -167,7 +160,7 @@ export default function BulkPlayerRegistration({
               }}
               className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
             >
-              + Register Another Batch
+              + Bulk Register 
             </button>
             <button
               type="button"
@@ -185,7 +178,7 @@ export default function BulkPlayerRegistration({
         <div className="p-4 rounded-xl bg-rose-950/60 border border-rose-800/60 text-rose-300 text-xs flex items-center gap-3 animate-fadeIn">
           <AlertCircle className="w-5 h-5 text-rose-400 shrink-0" />
           <div className="flex-1">
-            <span className="font-bold block">Batch Registration Error:</span>
+            <span className="font-bold block">Registration Error:</span>
             <span>{error}</span>
           </div>
           <button
@@ -199,47 +192,34 @@ export default function BulkPlayerRegistration({
       )}
 
       {/* Staging Control Bar */}
-      <div className="bg-slate-800/80 border border-slate-700 rounded-2xl p-5 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
             <Users className="w-5 h-5" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-lg font-bold text-white">Staged Players Pool</h2>
-              <span className="px-2.5 py-0.5 rounded-full bg-slate-900 border border-slate-700 text-emerald-400 font-mono font-bold text-xs">
-                {stagedPlayers.length} {stagedPlayers.length === 1 ? 'Player' : 'Players'}
-              </span>
+            <div className="flex items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => setIsModalOpen(true)}
+                disabled={submitting}
+                className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-600 hover:from-emerald-400 hover:to-cyan-500 text-white font-extrabold rounded-xl text-xs sm:text-sm shadow-lg shadow-emerald-500/20 transition-all cursor-pointer"
+              >
+                <UserPlus className="w-4 h-4" />
+                <span>Add Player</span>
+              </button>
+              {stagedPlayers.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleClearAll}
+                  disabled={submitting}
+                  className="px-3.5 py-2.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-rose-400 hover:text-rose-300 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+                >
+                  Clear All
+                </button>
+              )}
             </div>
-            <p className="text-xs text-slate-400">
-              Players added here are held locally until you commit them with "Register All Players".
-            </p>
           </div>
         </div>
-
-        <div className="flex items-center gap-2.5">
-          {stagedPlayers.length > 0 && (
-            <button
-              type="button"
-              onClick={handleClearAll}
-              disabled={submitting}
-              className="px-3.5 py-2.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-rose-400 hover:text-rose-300 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
-            >
-              Clear All
-            </button>
-          )}
-
-          <button
-            type="button"
-            onClick={() => setIsModalOpen(true)}
-            disabled={submitting}
-            className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-600 hover:from-emerald-400 hover:to-cyan-500 text-white font-extrabold rounded-xl text-xs sm:text-sm shadow-lg shadow-emerald-500/20 transition-all cursor-pointer"
-          >
-            <UserPlus className="w-4 h-4" />
-            <span>Add Player +</span>
-          </button>
-        </div>
-      </div>
 
       {/* Staged Players List */}
       {stagedPlayers.length === 0 ? (
@@ -248,9 +228,9 @@ export default function BulkPlayerRegistration({
             <Users className="w-8 h-8" />
           </div>
           <div className="space-y-1">
-            <h3 className="text-base font-bold text-white">No Players Staged Yet</h3>
+            <h3 className="text-base font-bold text-white">No Players Saved Yet</h3>
             <p className="text-xs text-slate-400 max-w-md mx-auto">
-              Your staging list is empty. Click the button below to add your first player to this batch.
+              Your Saving list is empty. Click the button below to add your first player to register.
             </p>
           </div>
           <button
@@ -259,7 +239,7 @@ export default function BulkPlayerRegistration({
             className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-md"
           >
             <UserPlus className="w-4 h-4" />
-            <span>Add Player +</span>
+            <span>Add Player</span>
           </button>
         </div>
       ) : (
@@ -294,29 +274,17 @@ export default function BulkPlayerRegistration({
                       <h4 className="font-bold text-white text-sm truncate">{player.fullName}</h4>
                       <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[11px] font-bold">
                         <span>✅</span>
-                        <span>Staged</span>
+                        <span>Saved</span>
                       </span>
                     </div>
 
                     <div className="flex items-center gap-3 text-xs text-slate-400 mt-1 font-mono">
                       <span>NIC: <strong className="text-slate-200">{player.nic}</strong></span>
-                      <span>Phone: <strong className="text-slate-200">{player.phone}</strong></span>
                     </div>
 
                     <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-1">
                       <Building2 className="w-3 h-3 text-emerald-400" />
                       <span className="truncate">{player.teamName || 'Assigned Club'}</span>
-                      {player.image_url && isDriveUrl(player.image_url) && (
-                        <a
-                          href={getDriveViewUrl(player.image_url)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-0.5 text-emerald-400 hover:text-emerald-300 underline"
-                        >
-                          <span>Photo</span>
-                          <ExternalLink className="w-2.5 h-2.5" />
-                        </a>
-                      )}
                     </div>
                   </div>
                 </div>
@@ -347,7 +315,7 @@ export default function BulkPlayerRegistration({
               {submitting ? (
                 <>
                   <RefreshCw className="w-5 h-5 animate-spin" />
-                  <span>Registering {stagedPlayers.length} Player(s) to CricPass...</span>
+                  <span>Registering {stagedPlayers.length} Player(s)...</span>
                 </>
               ) : (
                 <>
@@ -357,7 +325,7 @@ export default function BulkPlayerRegistration({
               )}
             </button>
             <p className="text-center text-xs text-slate-500 mt-2">
-              All {stagedPlayers.length} staged player(s) will be committed to MongoDB and marked ACTIVE. A single WhatsApp summary will be sent to the club administrator.
+              All {stagedPlayers.length} saved player(s) will be register and marked ACTIVE. A single WhatsApp summary will be sent to the club administrator.
             </p>
           </div>
         </div>

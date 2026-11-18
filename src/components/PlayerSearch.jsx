@@ -195,18 +195,6 @@ export default function PlayerSearch() {
                 </div>
               </div>
 
-              {player.image_url && isDriveUrl(player.image_url) && (
-                <a
-                  href={getDriveViewUrl(player.image_url)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mb-2 inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-400 hover:text-emerald-300 transition-colors"
-                >
-                  <span>Google Drive Photo</span>
-                  <ExternalLink className="w-3 h-3" />
-                </a>
-              )}
-
               <h2 className="text-xl font-bold text-white tracking-tight">{player.full_name}</h2>
               <p className="text-xs font-mono text-emerald-400 mt-1 font-semibold">NIC: {player.nic_number}</p>
 

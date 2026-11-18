@@ -206,7 +206,7 @@ export default function FileUpload({
             <div className="absolute inset-0 blur-md bg-emerald-500/20 -z-10 rounded-full" />
           </div>
           <div className="text-center space-y-1">
-            <p className="text-sm font-semibold text-white">Uploading file to Google Drive...</p>
+            <p className="text-sm font-semibold text-white">Uploading file...</p>
             <p className="text-xs text-slate-400">Please hold on while the file is securely uploaded.</p>
           </div>
         </div>
@@ -238,12 +238,9 @@ export default function FileUpload({
                   <h4 className="text-sm font-bold text-white truncate">
                     {uploadedData.fileName || 'Uploaded File'}
                   </h4>
-                  <span className="shrink-0 px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 text-[10px] font-bold border border-emerald-500/30">
-                    Google Drive
-                  </span>
                 </div>
                 <p className="text-xs text-slate-400 truncate mt-0.5">
-                  File uploaded and stored in Google Drive successfully.
+                  File uploaded successfully.
                 </p>
               </div>
             </div>
@@ -251,16 +248,6 @@ export default function FileUpload({
             {/* Action Buttons */}
             <div className="flex items-center gap-1.5 shrink-0">
               {/* View in Drive Button */}
-              <a
-                href={uploadedData.viewUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 hover:text-white rounded-lg text-xs font-semibold transition-colors cursor-pointer shadow-sm"
-                title="View in Google Drive"
-              >
-                <span>View</span>
-                <ExternalLink className="w-3.5 h-3.5" />
-              </a>
 
               {/* Remove File Button */}
               {!disabled && (

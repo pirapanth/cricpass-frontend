@@ -46,7 +46,7 @@ export default function PlayerFormModal({
   const [imagePreview, setImagePreview] = useState(null);
   const [imageUrl, setImageUrl] = useState('');
   const [uploadingImage, setUploadingImage] = useState(false);
-  const [uploadStatusText, setUploadStatusText] = useState('Uploading photo to Google Drive...');
+  const [uploadStatusText, setUploadStatusText] = useState('Uploading photo...');
   const [error, setError] = useState(null);
   const fileInputRef = useRef(null);
 
@@ -96,10 +96,10 @@ export default function PlayerFormModal({
 
     // Upload directly to Google Drive via POST /api/upload
     setUploadingImage(true);
-    setUploadStatusText('Optimizing & uploading photo to Google Drive...');
+    setUploadStatusText('Optimizing & uploading photo...');
 
     const statusTimer = setTimeout(() => {
-      setUploadStatusText('Connecting to Google Drive & uploading...');
+      setUploadStatusText('uploading...');
     }, 3500);
 
     try {
@@ -112,7 +112,7 @@ export default function PlayerFormModal({
       if (uploadRes?.success && uploadRes?.data?.viewUrl) {
         setImageUrl(uploadRes.data.viewUrl);
       } else {
-        throw new Error(uploadRes?.error || 'Failed to upload photo to Google Drive');
+        throw new Error(uploadRes?.error || 'Failed to upload photo');
       }
     } catch (err) {
       console.error('Player photo upload error:', err);
@@ -120,7 +120,7 @@ export default function PlayerFormModal({
         err.response?.data?.error ||
         err.message ||
         'Image upload failed. Please try again.';
-      setError(`Google Drive Upload Error: ${errMsg}`);
+      setError(`Upload Error: ${errMsg}`);
       if (localBlob) URL.revokeObjectURL(localBlob);
       setImagePreview(null);
       setImageUrl('');
@@ -149,7 +149,7 @@ export default function PlayerFormModal({
     setError(null);
 
     if (uploadingImage) {
-      setError('Please wait for the player photo to finish uploading to Google Drive.');
+      setError('Please wait for the player photo to finish uploading.');
       return;
     }
 
@@ -219,8 +219,8 @@ export default function PlayerFormModal({
               <UserPlus className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-bold text-white text-base">Add Player to Batch</h3>
-              <p className="text-xs text-slate-400">Stage player details before bulk committing to database</p>
+              <h3 className="font-bold text-white text-base">Add Player</h3>
+              <p className="text-xs text-slate-400">Save player details before bulk registration</p>
             </div>
           </div>
           <button
@@ -305,10 +305,6 @@ export default function PlayerFormModal({
               <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
                 4. Club / Team Assignment <span className="text-emerald-400 text-[11px] font-normal normal-case">(Current Club)</span>
               </label>
-              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-md">
-                <Lock className="w-3 h-3 text-emerald-400" />
-                Read-Only
-              </span>
             </div>
             <div className="w-full flex items-center justify-between px-3.5 py-3 bg-slate-950 border border-slate-700/80 rounded-xl text-white">
               <div className="flex items-center gap-3">
@@ -318,9 +314,6 @@ export default function PlayerFormModal({
                 <div>
                   <span className="text-sm font-bold text-white block">
                     {currentTeamName}
-                  </span>
-                  <span className="text-[11px] text-slate-400 font-mono">
-                    {currentTeamCode ? `Club ID: ${currentTeamCode}` : 'Current Admin Club'}
                   </span>
                 </div>
               </div>
@@ -332,7 +325,7 @@ export default function PlayerFormModal({
             </div>
             <p className="text-[11px] text-slate-400 flex items-center gap-1.5">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-              <span>Automatically assigned to your logged-in club.</span>
+              <span>Automatically assigned to your team.</span>
             </p>
           </div>
 
@@ -340,7 +333,7 @@ export default function PlayerFormModal({
           <div className="space-y-2 pt-1">
             <div className="flex items-center justify-between">
               <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
-                5. Player Photo (Upload to Google Drive)
+                5. Player Photo (Optinal)
               </label>
               {imageUrl && !uploadingImage && (
                 <span className="text-[11px] text-emerald-400 font-semibold flex items-center gap-1">
@@ -394,27 +387,6 @@ export default function PlayerFormModal({
                       }
                     }}
                   />
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-white truncate max-w-[150px]">
-                        {selectedFileName || 'Player Photo'}
-                      </span>
-                      <span className="px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-bold">
-                        Drive
-                      </span>
-                    </div>
-                    {imageUrl && isDriveUrl(imageUrl) && (
-                      <a
-                        href={getDriveViewUrl(imageUrl)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-[11px] text-emerald-400 hover:text-emerald-300 underline mt-0.5"
-                      >
-                        <span>View on Drive</span>
-                        <ExternalLink className="w-3 h-3" />
-                      </a>
-                    )}
-                  </div>
                 </div>
 
                 <div className="flex items-center gap-1 shrink-0">
@@ -452,7 +424,7 @@ export default function PlayerFormModal({
               disabled={uploadingImage}
               className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-extrabold rounded-xl text-xs shadow-lg shadow-emerald-500/20 transition-all cursor-pointer disabled:opacity-50"
             >
-              {uploadingImage ? 'Uploading Image...' : 'Save Player to Batch'}
+              {uploadingImage ? 'Saving ...' : 'Save'}
             </button>
           </div>
         </form>

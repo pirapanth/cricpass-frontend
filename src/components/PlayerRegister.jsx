@@ -137,14 +137,14 @@ export default function PlayerRegister({ onPlayerRegistered }) {
           image_url: uploadRes.data.viewUrl
         }));
       } else {
-        throw new Error(uploadRes?.error || 'Failed to upload photo to Google Drive');
+        throw new Error(uploadRes?.error || 'Failed to upload photo');
       }
     } catch (err) {
       console.error('Player photo upload error:', err);
       const errMsg =
         err.response?.data?.error ||
         err.message ||
-        'Failed to upload image to Google Drive. Please try again.';
+        'Failed to upload image. Please try again.';
       setUploadError(errMsg);
       setError(`Image Upload Error: ${errMsg}`);
       // Revert preview on upload failure
@@ -240,7 +240,7 @@ export default function PlayerRegister({ onPlayerRegistered }) {
     setError(null);
 
     if (uploadingImage) {
-      setError('Please wait for the player photo to finish uploading to Google Drive.');
+      setError('Please wait for the player photo to finish uploading.');
       return;
     }
 
@@ -361,7 +361,7 @@ export default function PlayerRegister({ onPlayerRegistered }) {
                     target="_blank"
                     rel="noopener noreferrer"
                     className="absolute -bottom-1 -right-1 p-1 bg-slate-900 border border-emerald-500/50 rounded-lg text-emerald-400 hover:text-emerald-300 shadow transition-colors"
-                    title="View Original on Google Drive"
+                    title="View Original"
                   >
                     <ExternalLink className="w-3 h-3" />
                   </a>
@@ -640,12 +640,12 @@ export default function PlayerRegister({ onPlayerRegistered }) {
             <div className="sm:col-span-2 space-y-2">
               <div className="flex items-center justify-between">
                 <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
-                  Player Photo (Google Drive Cloud Storage)
+                  Player Photo (Optinal)
                 </label>
                 {formData.image_url && !uploadingImage && (
                   <span className="text-[11px] text-emerald-400 font-semibold flex items-center gap-1">
                     <CheckCircle className="w-3.5 h-3.5" />
-                    Uploaded to Drive
+                    Uploaded
                   </span>
                 )}
               </div>
@@ -668,8 +668,8 @@ export default function PlayerRegister({ onPlayerRegistered }) {
                     <div className="absolute inset-0 blur-md bg-emerald-500/20 -z-10 rounded-full" />
                   </div>
                   <div className="text-center space-y-1">
-                    <p className="text-sm font-semibold text-white">Uploading image to Google Drive...</p>
-                    <p className="text-xs text-slate-400">Storing photo securely on Google Drive</p>
+                    <p className="text-sm font-semibold text-white">Uploading image...</p>
+                    <p className="text-xs text-slate-400">Storing photo securely</p>
                   </div>
                 </div>
               ) : !imagePreview ? (
@@ -685,7 +685,7 @@ export default function PlayerRegister({ onPlayerRegistered }) {
                     Click to select player photo from File Manager
                   </h4>
                   <p className="text-xs text-slate-500 mt-1">
-                    Supports JPG, PNG, WEBP (Max 10MB) • Uploads directly to Google Drive
+                    Supports JPG, PNG, WEBP (Max 10MB) •
                   </p>
                 </div>
               ) : (
@@ -704,26 +704,7 @@ export default function PlayerRegister({ onPlayerRegistered }) {
                       }}
                     />
                     <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-white truncate max-w-[180px] sm:max-w-xs">
-                          {selectedFileName || 'Player Photo'}
-                        </span>
-                        <span className="shrink-0 px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 text-[10px] font-bold border border-emerald-500/30">
-                          Google Drive
-                        </span>
-                      </div>
                       <div className="flex items-center gap-2 mt-1.5">
-                        {formData.image_url && isDriveUrl(formData.image_url) && (
-                          <a
-                            href={getDriveViewUrl(formData.image_url)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-[11px] text-emerald-400 hover:text-emerald-300 font-medium underline"
-                          >
-                            <span>View on Drive</span>
-                            <ExternalLink className="w-3 h-3" />
-                          </a>
-                        )}
                         <button
                           type="button"
                           onClick={() => fileInputRef.current?.click()}
