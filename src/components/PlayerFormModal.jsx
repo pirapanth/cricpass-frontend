@@ -11,11 +11,12 @@ import {
   Building2,
   User,
   Phone,
-  Shield
+  Shield,
+  ShieldCheck,
+  Lock
 } from 'lucide-react';
 import { uploadAttachment } from '../api';
 import useTeams from '../hooks/useTeams';
-import TeamSelectDropdown from './TeamSelectDropdown';
 import {
   handlePlus94PhoneInput,
   handlePlus94KeyDown,
@@ -40,24 +41,36 @@ export default function PlayerFormModal({
   const [fullName, setFullName] = useState('');
   const [nic, setNic] = useState('');
   const [phone, setPhone] = useState('+94');
-  const [teamId, setTeamId] = useState(defaultTeam?._id || defaultTeam?.team_id || '');
+  const [teamId, setTeamId] = useState(defaultTeam?._id || defaultTeam?.team_id || defaultTeam?.teamId || '');
   const [selectedFileName, setSelectedFileName] = useState('');
   const [imagePreview, setImagePreview] = useState(null);
   const [imageUrl, setImageUrl] = useState('');
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [uploadStatusText, setUploadStatusText] = useState('Uploading photo to Google Drive...');
   const [error, setError] = useState(null);
   const fileInputRef = useRef(null);
 
-  // Set default team whenever modal opens or defaultTeam changes
+  // Automatically lock teamId to current logged-in team
   useEffect(() => {
-    if (isOpen) {
-      if (defaultTeam) {
-        setTeamId(defaultTeam._id || defaultTeam.team_id || '');
-      }
+    if (isOpen && defaultTeam) {
+      setTeamId(defaultTeam._id || defaultTeam.team_id || defaultTeam.teamId || '');
     }
   }, [isOpen, defaultTeam]);
 
   if (!isOpen) return null;
+
+  // Resolve current logged-in team details for display
+  const currentTeamId = defaultTeam?._id || defaultTeam?.team_id || defaultTeam?.teamId || teamId || '';
+  const currentTeamName =
+    defaultTeam?.team_name ||
+    defaultTeam?.teamName ||
+    safeTeams.find((t) => t._id === currentTeamId || t.team_id === currentTeamId)?.team_name ||
+    'Your Assigned Club';
+  const currentTeamCode =
+    defaultTeam?.team_id ||
+    defaultTeam?.teamId ||
+    safeTeams.find((t) => t._id === currentTeamId || t.team_id === currentTeamId)?.team_id ||
+    '';
 
   // Handle local image file selection and upload to Google Drive
   const handleFileChange = async (e) => {
@@ -83,8 +96,19 @@ export default function PlayerFormModal({
 
     // Upload directly to Google Drive via POST /api/upload
     setUploadingImage(true);
+    setUploadStatusText('Optimizing & uploading photo to Google Drive...');
+
+    const statusTimer = setTimeout(() => {
+      setUploadStatusText('Connecting to Google Drive & uploading...');
+    }, 3500);
+
     try {
-      const uploadRes = await uploadAttachment(file, teamId || defaultTeam?.team_name || 'BulkPlayerPhoto');
+      const targetTeamKey =
+        defaultTeam?.team_id ||
+        defaultTeam?.team_name ||
+        teamId ||
+        'BulkPlayerPhoto';
+      const uploadRes = await uploadAttachment(file, targetTeamKey);
       if (uploadRes?.success && uploadRes?.data?.viewUrl) {
         setImageUrl(uploadRes.data.viewUrl);
       } else {
@@ -92,14 +116,19 @@ export default function PlayerFormModal({
       }
     } catch (err) {
       console.error('Player photo upload error:', err);
-      const errMsg = err.response?.data?.error || err.message || 'Image upload failed. Please try again.';
+      const errMsg =
+        err.response?.data?.error ||
+        err.message ||
+        'Image upload failed. Please try again.';
       setError(`Google Drive Upload Error: ${errMsg}`);
       if (localBlob) URL.revokeObjectURL(localBlob);
       setImagePreview(null);
       setImageUrl('');
       setSelectedFileName('');
     } finally {
+      clearTimeout(statusTimer);
       setUploadingImage(false);
+      if (e.target) e.target.value = '';
     }
   };
 
@@ -154,22 +183,20 @@ export default function PlayerFormModal({
       return;
     }
 
-    if (!teamId) {
-      setError('Please select a Club / Team Assignment.');
+    // Ensure teamId is locked to current logged-in team
+    const finalTeamId = defaultTeam?._id || defaultTeam?.team_id || defaultTeam?.teamId || teamId;
+    if (!finalTeamId) {
+      setError('Current club information is missing. Please refresh and log in again.');
       return;
     }
-
-    // Resolve team name for display
-    const selectedTeamObj = safeTeams.find((t) => t._id === teamId || t.team_id === teamId) || defaultTeam;
-    const teamName = selectedTeamObj?.team_name || 'Assigned Club';
 
     // Commit to staging array
     onSave({
       fullName: trimmedName,
       nic: formattedNic,
       phone: trimmedPhone,
-      teamId,
-      teamName,
+      teamId: finalTeamId,
+      teamName: currentTeamName,
       image_url: imageUrl || null,
       selectedFileName: selectedFileName || null
     });
@@ -272,17 +299,41 @@ export default function PlayerFormModal({
             <p className="text-[11px] text-slate-500">Format: +94 followed by 9 digits</p>
           </div>
 
-          {/* 4. Club / Team Assignment */}
+          {/* 4. Club / Team Assignment (Read-Only for Logged-in Team) */}
           <div className="space-y-1.5">
-            <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
-              4. Club / Team Assignment <span className="text-rose-400">*</span>
-            </label>
-            <TeamSelectDropdown
-              teams={safeTeams}
-              value={teamId}
-              onChange={(newTeamId) => setTeamId(newTeamId)}
-              placeholder="Select Club for this player..."
-            />
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
+                4. Club / Team Assignment <span className="text-emerald-400 text-[11px] font-normal normal-case">(Current Club)</span>
+              </label>
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-md">
+                <Lock className="w-3 h-3 text-emerald-400" />
+                Read-Only
+              </span>
+            </div>
+            <div className="w-full flex items-center justify-between px-3.5 py-3 bg-slate-950 border border-slate-700/80 rounded-xl text-white">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
+                  <Building2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="text-sm font-bold text-white block">
+                    {currentTeamName}
+                  </span>
+                  <span className="text-[11px] text-slate-400 font-mono">
+                    {currentTeamCode ? `Club ID: ${currentTeamCode}` : 'Current Admin Club'}
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs px-2.5 py-1 rounded-lg bg-slate-800 text-emerald-400 font-mono font-bold border border-slate-700">
+                  {currentTeamCode || 'ASSIGNED'}
+                </span>
+              </div>
+            </div>
+            <p className="text-[11px] text-slate-400 flex items-center gap-1.5">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <span>Automatically assigned to your logged-in club.</span>
+            </p>
           </div>
 
           {/* 5. Player Photo (Google Drive Upload) */}
@@ -311,7 +362,7 @@ export default function PlayerFormModal({
             {uploadingImage ? (
               <div className="p-5 bg-slate-950 border border-emerald-500/40 rounded-xl flex flex-col items-center justify-center space-y-2 animate-fadeIn">
                 <RefreshCw className="w-6 h-6 text-emerald-400 animate-spin" />
-                <p className="text-xs font-semibold text-white">Uploading photo to Google Drive...</p>
+                <p className="text-xs font-semibold text-white">{uploadStatusText}</p>
                 <p className="text-[11px] text-slate-400">Please hold on while the file is processed.</p>
               </div>
             ) : !imagePreview ? (

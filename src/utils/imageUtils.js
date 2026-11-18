@@ -62,3 +62,111 @@ export function getDriveViewUrl(url) {
   }
   return url;
 }
+
+/**
+ * Automatically optimizes an image file before upload (resizes high-res images to max 1600px
+ * and compresses JPEG/WebP to quality 0.82) to prevent 30-second timeout errors on slow connections.
+ * If the file is not an image or fails compression, it safely returns the original file.
+ */
+export async function optimizeImageForUpload(file, { maxWidth = 1600, maxHeight = 1600, quality = 0.82 } = {}) {
+  if (!file || !(file instanceof Blob) || !file.type || !file.type.startsWith('image/')) {
+    return file;
+  }
+  // If file is already small (under 200KB) and not oversized, keep it as is
+  if (file.size <= 200 * 1024) {
+    return file;
+  }
+  // Preserve animated GIFs and SVGs without canvas mutation
+  if (file.type === 'image/gif' || file.type === 'image/svg+xml') {
+    return file;
+  }
+
+  // Ensure window/document exists (browser environment)
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return file;
+  }
+
+  try {
+    let imageWidth = 0;
+    let imageHeight = 0;
+    let sourceElement = null;
+
+    if (typeof createImageBitmap === 'function') {
+      try {
+        const bitmap = await createImageBitmap(file);
+        imageWidth = bitmap.width;
+        imageHeight = bitmap.height;
+        sourceElement = bitmap;
+      } catch (bitmapErr) {
+        // Fallback to Image element below
+      }
+    }
+
+    if (!sourceElement) {
+      sourceElement = await new Promise((resolve, reject) => {
+        const img = new Image();
+        const url = URL.createObjectURL(file);
+        img.onload = () => {
+          URL.revokeObjectURL(url);
+          resolve(img);
+        };
+        img.onerror = (err) => {
+          URL.revokeObjectURL(url);
+          reject(err);
+        };
+        img.src = url;
+      });
+      imageWidth = sourceElement.naturalWidth || sourceElement.width;
+      imageHeight = sourceElement.naturalHeight || sourceElement.height;
+    }
+
+    if (!imageWidth || !imageHeight) {
+      if (sourceElement && typeof sourceElement.close === 'function') sourceElement.close();
+      return file;
+    }
+
+    // Check if resize is needed
+    let targetWidth = imageWidth;
+    let targetHeight = imageHeight;
+
+    if (targetWidth > maxWidth || targetHeight > maxHeight) {
+      const scale = Math.min(maxWidth / targetWidth, maxHeight / targetHeight);
+      targetWidth = Math.round(targetWidth * scale);
+      targetHeight = Math.round(targetHeight * scale);
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      if (typeof sourceElement.close === 'function') sourceElement.close();
+      return file;
+    }
+
+    ctx.drawImage(sourceElement, 0, 0, targetWidth, targetHeight);
+    if (typeof sourceElement.close === 'function') {
+      sourceElement.close();
+    }
+
+    // Prefer jpeg for photos (smallest size and universal compatibility)
+    const outputType = file.type === 'image/png' && file.size < 1.5 * 1024 * 1024 ? 'image/png' : 'image/jpeg';
+    const blob = await new Promise((resolve) => {
+      canvas.toBlob(resolve, outputType, quality);
+    });
+
+    if (blob && blob.size < file.size) {
+      const ext = outputType === 'image/jpeg' ? '.jpg' : '.png';
+      const cleanName = file.name ? file.name.replace(/\.[^/.]+$/, ext) : `photo${ext}`;
+      return new File([blob], cleanName, {
+        type: outputType,
+        lastModified: Date.now()
+      });
+    }
+
+    return file;
+  } catch (err) {
+    console.warn('[optimizeImageForUpload] Failed to compress image, using original:', err);
+    return file;
+  }
+}

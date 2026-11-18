@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { optimizeImageForUpload } from './utils/imageUtils';
 
 // Sanitize base URL: checks VITE_API_BASE_URL, VITE_API_URL, REACT_APP_API_BASE_URL, or local/prod defaults
 const defaultBaseUrl = import.meta.env.DEV
@@ -423,20 +424,57 @@ export const getTransfers = async (params = {}) => {
 
 /**
  * 17. Upload File / Attachment to Google Drive
+ * Automatically compresses heavy client images to prevent 30000ms timeouts,
+ * sets a generous 120-second timeout, and retries on cold-start timeouts.
  */
-export const uploadAttachment = async (file, teamId = 'General') => {
+export const uploadAttachment = async (file, teamId = 'General', { retries = 1 } = {}) => {
+  // 1. Optimize image in the browser if it's a large photo
+  let uploadFile = file;
+  try {
+    uploadFile = await optimizeImageForUpload(file);
+  } catch (optErr) {
+    console.warn('[uploadAttachment] Image optimization skipped:', optErr);
+  }
+
   const formData = new FormData();
-  formData.append('file', file);
+  formData.append('file', uploadFile);
   if (teamId) {
     formData.append('teamId', teamId);
   }
 
-  const response = await api.post('/upload', formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
-  });
-  return response.data;
+  let attempt = 0;
+  while (attempt <= retries) {
+    try {
+      const response = await api.post('/upload', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+        timeout: 120000, // 120 seconds (2 minutes) to prevent 30000ms timeout
+      });
+      return response.data;
+    } catch (err) {
+      const isTimeout =
+        err.code === 'ECONNABORTED' ||
+        (typeof err.message === 'string' && err.message.toLowerCase().includes('timeout'));
+      const isNetworkErr = !err.response && !err.status;
+
+      if ((isTimeout || isNetworkErr) && attempt < retries) {
+        attempt++;
+        console.warn(`[uploadAttachment] Upload timed out/network glitch on attempt ${attempt}. Retrying in 2s...`);
+        await new Promise((res) => setTimeout(res, 2000));
+        continue;
+      }
+
+      if (isTimeout) {
+        const timeoutError = new Error(
+          'Upload request timed out. The server or cloud storage is taking longer than expected. Please try again.'
+        );
+        timeoutError.originalError = err;
+        throw timeoutError;
+      }
+      throw err;
+    }
+  }
 };
 
 export const checkHealth = async () => {
