@@ -92,7 +92,7 @@ export const searchPlayerByNIC = async (nic) => {
  * 2. Register a new player
  */
 export const registerPlayer = async (playerData) => {
-  const response = await api.post('/players/register', playerData);
+  const response = await api.post('/players/register', playerData, { timeout: 60000 });
   return response.data;
 };
 
@@ -103,7 +103,7 @@ export const bulkRegisterPlayers = async ({ players, admin_phone }) => {
   const response = await api.post('/players/bulk-register', {
     players,
     admin_phone
-  });
+  }, { timeout: 60000 });
   return response.data;
 };
 
@@ -268,17 +268,21 @@ export const getTeamsWithRetry = async ({
 };
 
 export const registerTeam = async (teamData) => {
-  const response = await api.post('/teams/register', teamData);
+  const response = await api.post('/teams/register', teamData, { timeout: 60000 });
   return response.data;
 };
 
 export const verifyTeamOtp = async ({ verifyToken, otp }) => {
-  const response = await api.post('/teams/verify-otp', { verifyToken, otp });
+  const response = await api.post('/teams/verify-otp', { verifyToken, otp }, { timeout: 60000 });
   return response.data;
 };
 
 export const completeTeamRegistration = async ({ verifyToken, password, confirmPassword }) => {
-  const response = await api.post('/teams/complete-registration', { verifyToken, password, confirmPassword });
+  const response = await api.post(
+    '/teams/complete-registration',
+    { verifyToken, password, confirmPassword },
+    { timeout: 60000 }
+  );
   return response.data;
 };
 
